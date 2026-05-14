@@ -52,7 +52,7 @@
             background: radial-gradient(1200px 600px at 60% 20%, #1a2030, #0f1115);
         }
 
-        canvas {
+        #viz3d {
             width: 100%;
             height: 100%;
             display: block;
@@ -165,7 +165,7 @@
 
             <div class="control">
                 <label for="hipTrajectory">Hip Trajectory (°) <span id="hipTrajectoryVal" class="value">0</span></label>
-                <input id="hipTrajectory" type="range" min="-45" max="45" value="0" step="1" />
+                <input id="hipTrajectory" type="range" min="-45" max="90" value="0" step="1" />
             </div>
 
             <div class="control">
@@ -199,11 +199,20 @@
         </aside>
 
         <main class="canvas-wrap">
-            <canvas id="viz"></canvas>
+            <div id="viz3d"></div>
         </main>
     </div>
 
-    <script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.161.0/build/three.module.js"
+        }
+      }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
         const state = {
             hipTrajectory: 0,
             kneeFlexion: 178,
@@ -223,20 +232,10 @@
             resetBtn: document.getElementById('resetBtn'),
             status: document.getElementById('status'),
             hud: document.getElementById('hud'),
-            canvas: document.getElementById('viz'),
+            viz3d: document.getElementById('viz3d'),
         };
 
-        const ctx = els.canvas.getContext('2d');
-
         function toRad(deg) { return (deg * Math.PI) / 180; }
-
-        function resizeCanvas() {
-            const dpr = window.devicePixelRatio || 1;
-            const rect = els.canvas.getBoundingClientRect();
-            els.canvas.width = Math.floor(rect.width * dpr);
-            els.canvas.height = Math.floor(rect.height * dpr);
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        }
 
         function getSafetyStatus() {
             const alerts = [];
@@ -269,142 +268,126 @@
       `).join('');
         }
 
-        function drawArrow(x1, y1, x2, y2, color) {
-            const head = 10;
-            const dx = x2 - x1;
-            const dy = y2 - y1;
-            const ang = Math.atan2(dy, dx);
+        // --- 3D scene ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0f1115);
 
-            ctx.save();
-            ctx.strokeStyle = color;
-            ctx.fillStyle = color;
-            ctx.lineWidth = 3;
+        const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+        camera.position.set(2.5, 1.8, 3.6);
+        camera.lookAt(0, 0.8, 0);
 
-            ctx.beginPath();
-            ctx.moveTo(x1, y1);
-            ctx.lineTo(x2, y2);
-            ctx.stroke();
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio || 1);
+        els.viz3d.appendChild(renderer.domElement);
 
-            ctx.beginPath();
-            ctx.moveTo(x2, y2);
-            ctx.lineTo(x2 - head * Math.cos(ang - Math.PI / 6), y2 - head * Math.sin(ang - Math.PI / 6));
-            ctx.lineTo(x2 - head * Math.cos(ang + Math.PI / 6), y2 - head * Math.sin(ang + Math.PI / 6));
-            ctx.closePath();
-            ctx.fill();
-            ctx.restore();
+        const hemi = new THREE.HemisphereLight(0xbfd8ff, 0x1a1f2a, 1.0);
+        scene.add(hemi);
+        const dir = new THREE.DirectionalLight(0xffffff, 0.85);
+        dir.position.set(3, 5, 2);
+        scene.add(dir);
+
+        const ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(10, 10),
+            new THREE.MeshStandardMaterial({ color: 0x1a2030, roughness: 0.95, metalness: 0.05 })
+        );
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -0.35;
+        scene.add(ground);
+
+        const grid = new THREE.GridHelper(10, 20, 0x2a3140, 0x2a3140);
+        grid.position.y = -0.149;
+        scene.add(grid);
+
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0xc9d6e7, roughness: 0.65 });
+        const thighMat = new THREE.MeshStandardMaterial({ color: 0x66b3ff, roughness: 0.5 });
+        const shinMat = new THREE.MeshStandardMaterial({ color: 0xb08cff, roughness: 0.5 });
+        const footMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.5 });
+        const badMat = new THREE.MeshStandardMaterial({ color: 0xff5c5c, roughness: 0.45 });
+
+        const root = new THREE.Group();
+        root.position.set(0, 1.1, 0);
+        scene.add(root);
+
+        const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.45, 8, 16), bodyMat);
+        torso.position.set(0, 0.35, 0);
+        root.add(torso);
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 20, 16), bodyMat);
+        head.position.set(0, 0.72, 0);
+        root.add(head);
+
+        const armL = new THREE.Mesh(new THREE.CapsuleGeometry(0.04, 0.35, 6, 10), bodyMat);
+        armL.rotation.z = Math.PI / 2.6;
+        armL.position.set(-0.2, 0.42, 0);
+        root.add(armL);
+
+        const armR = armL.clone();
+        armR.rotation.z = -Math.PI / 2.6;
+        armR.position.set(0.2, 0.42, 0);
+        root.add(armR);
+
+        const hip = new THREE.Group();
+        hip.position.set(0, 0.1, 0);
+        root.add(hip);
+
+        const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.62, 6, 12), thighMat);
+        thigh.position.y = -0.35;
+        hip.add(thigh);
+
+        const knee = new THREE.Group();
+        knee.position.y = -0.7;
+        hip.add(knee);
+
+        const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.048, 0.58, 6, 12), shinMat);
+        shin.position.y = -0.32;
+        knee.add(shin);
+
+        const ankle = new THREE.Group();
+        ankle.position.y = -0.64;
+        knee.add(ankle);
+
+        const foot = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.07, 0.35), footMat);
+        foot.position.set(0, -0.03, 0.18);
+        ankle.add(foot);
+
+        const impactArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(), 0.55, 0xff5c5c, 0.14, 0.08);
+        impactArrow.visible = false;
+        scene.add(impactArrow);
+
+        function resize3D() {
+            const rect = els.viz3d.getBoundingClientRect();
+            camera.aspect = rect.width / Math.max(rect.height, 1);
+            camera.updateProjectionMatrix();
+            renderer.setSize(rect.width, rect.height);
         }
 
-        function drawJoint(x, y, label) {
-            ctx.save();
-            ctx.fillStyle = '#f2f4f8';
-            ctx.strokeStyle = '#111827';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(x, y, 8, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
+        function updatePose3D() {
+            hip.rotation.x = -toRad(state.hipTrajectory);
+            knee.rotation.x = toRad(180 - state.kneeFlexion);
+            ankle.rotation.x = toRad(state.strikePitch);
+            ankle.rotation.y = toRad(state.footAlignment);
 
-            ctx.fillStyle = '#111827';
-            ctx.font = 'bold 11px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(label, x, y);
-            ctx.restore();
+            const shock = state.strikePitch >= 0;
+            foot.material = shock ? badMat : footMat;
+
+            if (shock) {
+                const footWorld = new THREE.Vector3();
+                foot.getWorldPosition(footWorld);
+                impactArrow.position.copy(footWorld.clone().add(new THREE.Vector3(0, -0.05, 0)));
+                impactArrow.visible = true;
+            } else {
+                impactArrow.visible = false;
+            }
         }
 
-        function drawScene() {
-            const rect = els.canvas.getBoundingClientRect();
-            const width = rect.width;
-            const height = rect.height;
+        function renderScene() {
+            updatePose3D();
+            renderer.render(scene, camera);
+        }
 
-            ctx.clearRect(0, 0, width, height);
-
-            const minDim = Math.min(width, height);
-            const cx = width * 0.5;
-            const cy = height * 0.25;
-
-            const thighLen = minDim * 0.25;
-            const shinLen = minDim * 0.25;
-            const footLen = minDim * 0.08;
-
-            const hipRad = toRad(state.hipTrajectory);
-            const baseAngle = Math.PI / 2;
-
-            const kneeX = cx + Math.cos(baseAngle + hipRad) * thighLen;
-            const kneeY = cy + Math.sin(baseAngle + hipRad) * thighLen;
-
-            const flexionRad = toRad(180 - state.kneeFlexion);
-            const shinAngle = baseAngle + hipRad - flexionRad;
-
-            const ankleX = kneeX + Math.cos(shinAngle) * shinLen;
-            const ankleY = kneeY + Math.sin(shinAngle) * shinLen;
-
-            const pitchRad = toRad(state.strikePitch);
-            const footAngle = shinAngle + (Math.PI / 2) + pitchRad;
-
-            const toeX = ankleX + Math.cos(footAngle) * footLen;
-            const toeY = ankleY + Math.sin(footAngle) * footLen;
-
-            // Floor
-            const floorY = height * 0.85;
-            ctx.fillStyle = 'rgba(255,255,255,0.03)';
-            ctx.fillRect(0, floorY, width, height - floorY);
-            ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid');
-            ctx.setLineDash([8, 8]);
-            ctx.beginPath();
-            ctx.moveTo(0, floorY);
-            ctx.lineTo(width, floorY);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            // Segments
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-
-            ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--hip');
-            ctx.lineWidth = 12;
-            ctx.beginPath();
-            ctx.moveTo(cx, cy);
-            ctx.lineTo(kneeX, kneeY);
-            ctx.stroke();
-
-            ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--shin');
-            ctx.beginPath();
-            ctx.moveTo(kneeX, kneeY);
-            ctx.lineTo(ankleX, ankleY);
-            ctx.stroke();
-
-            ctx.strokeStyle = state.strikePitch >= 0
-                ? getComputedStyle(document.documentElement).getPropertyValue('--bad')
-                : getComputedStyle(document.documentElement).getPropertyValue('--foot');
-            ctx.lineWidth = 8;
-            ctx.beginPath();
-            ctx.moveTo(ankleX, ankleY);
-            ctx.lineTo(toeX, toeY);
-            ctx.stroke();
-
-            drawJoint(cx, cy, 'H');
-            drawJoint(kneeX, kneeY, 'K');
-            drawJoint(ankleX, ankleY, 'A');
-
-            if (state.strikePitch >= 0) {
-                drawArrow(toeX, toeY + 12, toeX, toeY - 55, '#ff5c5c');
-                ctx.save();
-                ctx.fillStyle = '#ff5c5c';
-                ctx.textAlign = 'center';
-                ctx.font = 'bold 14px sans-serif';
-                ctx.fillText('Impact Shock', toeX, toeY + 34);
-                ctx.restore();
-            }
-
-            if (state.kneeFlexion >= 179) {
-                ctx.save();
-                ctx.fillStyle = '#ff5c5c';
-                ctx.textAlign = 'center';
-                ctx.font = 'bold 14px sans-serif';
-                ctx.fillText('HYPEREXTENSION PREVENTION ACTIVE', cx, cy - 40);
-                ctx.restore();
-            }
+        function animate() {
+            requestAnimationFrame(animate);
+            renderScene();
         }
 
         function syncUI() {
@@ -414,7 +397,7 @@
             els.strikePitchVal.textContent = state.strikePitch;
             setStatus();
             renderHUD();
-            drawScene();
+            renderScene();
         }
 
         function bindSlider(key, el) {
@@ -444,12 +427,13 @@
         });
 
         window.addEventListener('resize', () => {
-            resizeCanvas();
-            drawScene();
+            resize3D();
+            renderScene();
         });
 
-        resizeCanvas();
+        resize3D();
         syncUI();
+        animate();
     </script>
 </body>
 

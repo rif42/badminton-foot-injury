@@ -39,3 +39,7 @@ Monitors the rear anchor foot during deep forward lunges.
 * **Dangerous Threshold:** The outer edge (Small Toe coordinate) is closer to the ground plane than the Big Toe coordinate. Indicates ankle eversion dragging, risking severe lateral friction injuries and medial ligament strain.
 
 ---
+
+add another parameter which is hip rotation, where hip can "open" to the side of the body
+
+/web-research from the parameter that we have and the failure condition, right now the failure condition is singularly isolated (just one if statement), which is very far from the reality. perform a research to create a robust model of real life bio-mechanical risks
