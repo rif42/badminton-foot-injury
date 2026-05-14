@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Badminton Injury Simulation (Clean)</title>
+    <style>
+        :root {
+            --bg: #0f1115;
+            --panel: #171a21;
+            --panel-2: #1e2330;
+            --text: #e8ecf1;
+            --muted: #9aa7b3;
+            --ok: #4cd07a;
+            --warn: #ffb020;
+            --bad: #ff5c5c;
+            --hip: #66b3ff;
+            --shin: #b08cff;
+            --foot: #f2f2f2;
+            --grid: #2a3140;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            font-family: Inter, Segoe UI, Roboto, Arial, sans-serif;
+            color: var(--text);
+            background: var(--bg);
+        }
+
+        .app {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            height: 100%;
+        }
+
+        .sidebar {
+            background: var(--panel);
+            border-right: 1px solid #2a3140;
+            padding: 16px;
+            overflow: auto;
+        }
+
+        .canvas-wrap {
+            position: relative;
+            background: radial-gradient(1200px 600px at 60% 20%, #1a2030, #0f1115);
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-size: 18px;
+        }
+
+        p.note {
+            margin: 0 0 16px;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .control {
+            margin-bottom: 14px;
+        }
+
+        .control label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            margin-bottom: 6px;
+            color: var(--text);
+        }
+
+        .value {
+            color: var(--muted);
+        }
+
+        input[type="range"] {
+            width: 100%;
+        }
+
+        .row {
+            display: flex;
+            gap: 8px;
+        }
+
+        button {
+            background: var(--panel-2);
+            border: 1px solid #303a50;
+            color: var(--text);
+            border-radius: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            border-color: #3a4864;
+        }
+
+        .status {
+            margin-top: 14px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            font-weight: 600;
+            border: 1px solid #2e3647;
+            background: #131823;
+        }
+
+        .hud {
+            margin-top: 12px;
+            display: grid;
+            gap: 8px;
+        }
+
+        .hud-item {
+            border: 1px solid #2e3647;
+            border-radius: 10px;
+            background: #131823;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            font-size: 13px;
+        }
+
+        .ok {
+            color: var(--ok);
+        }
+
+        .warn {
+            color: var(--warn);
+        }
+
+        .bad {
+            color: var(--bad);
+        }
+
+        .legend {
+            margin-top: 14px;
+            padding-top: 10px;
+            border-top: 1px dashed #2e3647;
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.45;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+        <aside class="sidebar">
+            <h1>Badminton Biomechanics</h1>
+            <p class="note">Clean simulation file. Same core sliders + warnings, no host/injected scripts.</p>
+
+            <div class="control">
+                <label for="hipTrajectory">Hip Trajectory (°) <span id="hipTrajectoryVal" class="value">0</span></label>
+                <input id="hipTrajectory" type="range" min="-45" max="45" value="0" step="1" />
+            </div>
+
+            <div class="control">
+                <label for="kneeFlexion">Knee Flexion (°) <span id="kneeFlexionVal" class="value">178</span></label>
+                <input id="kneeFlexion" type="range" min="70" max="179" value="178" step="1" />
+            </div>
+
+            <div class="control">
+                <label for="footAlignment">Foot Alignment (°) <span id="footAlignmentVal" class="value">0</span></label>
+                <input id="footAlignment" type="range" min="0" max="45" value="0" step="1" />
+            </div>
+
+            <div class="control">
+                <label for="strikePitch">Landing Pitch (°) <span id="strikePitchVal" class="value">0</span></label>
+                <input id="strikePitch" type="range" min="-20" max="20" value="0" step="1" />
+            </div>
+
+            <div class="row">
+                <button id="resetBtn" type="button">Reset Posture</button>
+            </div>
+
+            <div id="status" class="status">✅ Form Optimal</div>
+
+            <div id="hud" class="hud"></div>
+
+            <div class="legend">
+                H = Hip, K = Knee, A = Ankle.<br />
+                Thresholds currently mirror original demo behavior:
+                footAlignment &gt; 15, kneeFlexion &lt; 90, strikePitch &gt;= 0.
+            </div>
+        </aside>
+
+        <main class="canvas-wrap">
+            <canvas id="viz"></canvas>
+        </main>
+    </div>
+
+    <script>
+        const state = {
+            hipTrajectory: 0,
+            kneeFlexion: 178,
+            footAlignment: 0,
+            strikePitch: 0,
+        };
+
+        const els = {
+            hipTrajectory: document.getElementById('hipTrajectory'),
+            kneeFlexion: document.getElementById('kneeFlexion'),
+            footAlignment: document.getElementById('footAlignment'),
+            strikePitch: document.getElementById('strikePitch'),
+            hipTrajectoryVal: document.getElementById('hipTrajectoryVal'),
+            kneeFlexionVal: document.getElementById('kneeFlexionVal'),
+            footAlignmentVal: document.getElementById('footAlignmentVal'),
+            strikePitchVal: document.getElementById('strikePitchVal'),
+            resetBtn: document.getElementById('resetBtn'),
+            status: document.getElementById('status'),
+            hud: document.getElementById('hud'),
+            canvas: document.getElementById('viz'),
+        };
+
+        const ctx = els.canvas.getContext('2d');
+
+        function toRad(deg) { return (deg * Math.PI) / 180; }
+
+        function resizeCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = els.canvas.getBoundingClientRect();
+            els.canvas.width = Math.floor(rect.width * dpr);
+            els.canvas.height = Math.floor(rect.height * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+
+        function getSafetyStatus() {
+            const alerts = [];
+
+            if (state.footAlignment > 15) alerts.push({ label: 'Lateral Shearing', value: 'HIGH RISK', cls: 'bad' });
+            else alerts.push({ label: 'Lateral Shearing', value: 'Normal', cls: 'ok' });
+
+            if (state.kneeFlexion < 90) alerts.push({ label: 'Knee Overload', value: 'CRITICAL', cls: 'bad' });
+            else alerts.push({ label: 'Knee Load', value: 'Safe', cls: 'ok' });
+
+            if (state.strikePitch >= 0) alerts.push({ label: 'Kinetic Shock', value: 'SHOCK', cls: 'bad' });
+            else alerts.push({ label: 'Kinetic Shock', value: 'Roll-off', cls: 'ok' });
+
+            return alerts;
+        }
+
+        function setStatus() {
+            const dangerous = state.kneeFlexion < 90 || state.footAlignment > 15 || state.strikePitch >= 0;
+            els.status.textContent = dangerous ? '⚠️ Bio-Mechanical Risk Detected' : '✅ Form Optimal';
+            els.status.style.color = dangerous ? 'var(--bad)' : 'var(--ok)';
+        }
+
+        function renderHUD() {
+            const alerts = getSafetyStatus();
+            els.hud.innerHTML = alerts.map(a => `
+        <div class="hud-item">
+          <span>${a.label}</span>
+          <strong class="${a.cls}">${a.value}</strong>
+        </div>
+      `).join('');
+        }
+
+        function drawArrow(x1, y1, x2, y2, color) {
+            const head = 10;
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const ang = Math.atan2(dy, dx);
+
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+            ctx.lineWidth = 3;
+
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(x2, y2);
+            ctx.lineTo(x2 - head * Math.cos(ang - Math.PI / 6), y2 - head * Math.sin(ang - Math.PI / 6));
+            ctx.lineTo(x2 - head * Math.cos(ang + Math.PI / 6), y2 - head * Math.sin(ang + Math.PI / 6));
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawJoint(x, y, label) {
+            ctx.save();
+            ctx.fillStyle = '#f2f4f8';
+            ctx.strokeStyle = '#111827';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(x, y, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#111827';
+            ctx.font = 'bold 11px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, x, y);
+            ctx.restore();
+        }
+
+        function drawScene() {
+            const rect = els.canvas.getBoundingClientRect();
+            const width = rect.width;
+            const height = rect.height;
+
+            ctx.clearRect(0, 0, width, height);
+
+            const minDim = Math.min(width, height);
+            const cx = width * 0.5;
+            const cy = height * 0.25;
+
+            const thighLen = minDim * 0.25;
+            const shinLen = minDim * 0.25;
+            const footLen = minDim * 0.08;
+
+            const hipRad = toRad(state.hipTrajectory);
+            const baseAngle = Math.PI / 2;
+
+            const kneeX = cx + Math.cos(baseAngle + hipRad) * thighLen;
+            const kneeY = cy + Math.sin(baseAngle + hipRad) * thighLen;
+
+            const flexionRad = toRad(180 - state.kneeFlexion);
+            const shinAngle = baseAngle + hipRad - flexionRad;
+
+            const ankleX = kneeX + Math.cos(shinAngle) * shinLen;
+            const ankleY = kneeY + Math.sin(shinAngle) * shinLen;
+
+            const pitchRad = toRad(state.strikePitch);
+            const footAngle = shinAngle + (Math.PI / 2) + pitchRad;
+
+            const toeX = ankleX + Math.cos(footAngle) * footLen;
+            const toeY = ankleY + Math.sin(footAngle) * footLen;
+
+            // Floor
+            const floorY = height * 0.85;
+            ctx.fillStyle = 'rgba(255,255,255,0.03)';
+            ctx.fillRect(0, floorY, width, height - floorY);
+            ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid');
+            ctx.setLineDash([8, 8]);
+            ctx.beginPath();
+            ctx.moveTo(0, floorY);
+            ctx.lineTo(width, floorY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Segments
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--hip');
+            ctx.lineWidth = 12;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(kneeX, kneeY);
+            ctx.stroke();
+
+            ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--shin');
+            ctx.beginPath();
+            ctx.moveTo(kneeX, kneeY);
+            ctx.lineTo(ankleX, ankleY);
+            ctx.stroke();
+
+            ctx.strokeStyle = state.strikePitch >= 0
+                ? getComputedStyle(document.documentElement).getPropertyValue('--bad')
+                : getComputedStyle(document.documentElement).getPropertyValue('--foot');
+            ctx.lineWidth = 8;
+            ctx.beginPath();
+            ctx.moveTo(ankleX, ankleY);
+            ctx.lineTo(toeX, toeY);
+            ctx.stroke();
+
+            drawJoint(cx, cy, 'H');
+            drawJoint(kneeX, kneeY, 'K');
+            drawJoint(ankleX, ankleY, 'A');
+
+            if (state.strikePitch >= 0) {
+                drawArrow(toeX, toeY + 12, toeX, toeY - 55, '#ff5c5c');
+                ctx.save();
+                ctx.fillStyle = '#ff5c5c';
+                ctx.textAlign = 'center';
+                ctx.font = 'bold 14px sans-serif';
+                ctx.fillText('Impact Shock', toeX, toeY + 34);
+                ctx.restore();
+            }
+
+            if (state.kneeFlexion >= 179) {
+                ctx.save();
+                ctx.fillStyle = '#ff5c5c';
+                ctx.textAlign = 'center';
+                ctx.font = 'bold 14px sans-serif';
+                ctx.fillText('HYPEREXTENSION PREVENTION ACTIVE', cx, cy - 40);
+                ctx.restore();
+            }
+        }
+
+        function syncUI() {
+            els.hipTrajectoryVal.textContent = state.hipTrajectory;
+            els.kneeFlexionVal.textContent = state.kneeFlexion;
+            els.footAlignmentVal.textContent = state.footAlignment;
+            els.strikePitchVal.textContent = state.strikePitch;
+            setStatus();
+            renderHUD();
+            drawScene();
+        }
+
+        function bindSlider(key, el) {
+            el.addEventListener('input', () => {
+                state[key] = Number(el.value);
+                syncUI();
+            });
+        }
+
+        bindSlider('hipTrajectory', els.hipTrajectory);
+        bindSlider('kneeFlexion', els.kneeFlexion);
+        bindSlider('footAlignment', els.footAlignment);
+        bindSlider('strikePitch', els.strikePitch);
+
+        els.resetBtn.addEventListener('click', () => {
+            state.hipTrajectory = 0;
+            state.kneeFlexion = 178;
+            state.footAlignment = 0;
+            state.strikePitch = 0;
+
+            els.hipTrajectory.value = String(state.hipTrajectory);
+            els.kneeFlexion.value = String(state.kneeFlexion);
+            els.footAlignment.value = String(state.footAlignment);
+            els.strikePitch.value = String(state.strikePitch);
+
+            syncUI();
+        });
+
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            drawScene();
+        });
+
+        resizeCanvas();
+        syncUI();
+    </script>
+</body>
+
+</html>
