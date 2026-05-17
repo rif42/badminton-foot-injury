@@ -183,6 +183,15 @@
                 <input id="strikePitch" type="range" min="-20" max="20" value="0" step="1" />
             </div>
 
+            <div class="control">
+                <label for="riskProfile">Risk Profile <span id="riskProfileVal" class="value">Balanced</span></label>
+                <select id="riskProfile" style="width:100%; background:var(--panel-2); color:var(--text); border:1px solid #303a50; border-radius:8px; padding:8px;">
+                    <option value="conservative">Conservative</option>
+                    <option value="balanced" selected>Balanced</option>
+                    <option value="aggressive">Aggressive</option>
+                </select>
+            </div>
+
             <div class="row">
                 <button id="resetBtn" type="button">Reset Posture</button>
             </div>
@@ -193,8 +202,8 @@
 
             <div class="legend">
                 H = Hip, K = Knee, A = Ankle.<br />
-                Thresholds currently mirror original demo behavior:
-                footAlignment &gt; 15, kneeFlexion &lt; 90, strikePitch &gt;= 0.
+                Risk now uses weighted + interaction score (0-100).<br />
+                Tune all configs in script: <code>RISK_PROFILES</code> (curves, weights, interactions, bands).
             </div>
         </aside>
 
@@ -225,10 +234,12 @@
             kneeFlexion: document.getElementById('kneeFlexion'),
             footAlignment: document.getElementById('footAlignment'),
             strikePitch: document.getElementById('strikePitch'),
+            riskProfile: document.getElementById('riskProfile'),
             hipTrajectoryVal: document.getElementById('hipTrajectoryVal'),
             kneeFlexionVal: document.getElementById('kneeFlexionVal'),
             footAlignmentVal: document.getElementById('footAlignmentVal'),
             strikePitchVal: document.getElementById('strikePitchVal'),
+            riskProfileVal: document.getElementById('riskProfileVal'),
             resetBtn: document.getElementById('resetBtn'),
             status: document.getElementById('status'),
             hud: document.getElementById('hud'),
@@ -236,30 +247,225 @@
         };
 
         function toRad(deg) { return (deg * Math.PI) / 180; }
+        function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
+
+        // =========================================================
+        // RISK MODEL CONFIG (PRIMARY TUNING SECTION)
+        // =========================================================
+        // RISK_PROFILES define all tuneable configs per profile:
+        // - curves: piecewise risk map for each parameter (x -> normalized r in [0..1])
+        // - weights: relative base contribution
+        // - interactions: pair synergy bonuses
+        // - bands: final status color bands
+
+        const RISK_PROFILES = {
+            conservative: {
+                label: 'Conservative',
+                curves: {
+                    hipTrajectory: [
+                        { max: 4.999, r: 0.8 },
+                        { max: 14.999, r: 0.55 },
+                        { max: 24.999, r: 0.25 },
+                        { max: Infinity, r: 0.05 },
+                    ],
+                    kneeFlexion: [
+                        { max: 145, r: 0.05 },
+                        { max: 155, r: 0.25 },
+                        { max: 165, r: 0.6 },
+                        { max: Infinity, r: 0.9 },
+                    ],
+                    footAlignment: [
+                        { max: 8, r: 0.05 },
+                        { max: 16, r: 0.3 },
+                        { max: 24, r: 0.65 },
+                        { max: Infinity, r: 0.9 },
+                    ],
+                    strikePitch: [
+                        { min: 0.001, r: 0.05 },
+                        { min: -3, r: 0.35 },
+                        { min: -8, r: 0.7 },
+                        { min: -Infinity, r: 0.9 },
+                    ],
+                },
+                weights: { hipTrajectory: 0.15, kneeFlexion: 0.35, footAlignment: 0.25, strikePitch: 0.25 },
+                interactions: { knee_x_hip: 14, foot_x_pitch: 14, knee_x_pitch: 10, hip_x_foot: 8 },
+                bands: { greenMax: 24, yellowMax: 49 },
+            },
+            balanced: {
+                label: 'Balanced',
+                curves: {
+                    hipTrajectory: [
+                        { max: -0.001, r: 0.8 },
+                        { max: 9.999, r: 0.55 },
+                        { max: 19.999, r: 0.25 },
+                        { max: Infinity, r: 0.05 },
+                    ],
+                    kneeFlexion: [
+                        { max: 150, r: 0.05 },
+                        { max: 160, r: 0.25 },
+                        { max: 170, r: 0.6 },
+                        { max: Infinity, r: 0.9 },
+                    ],
+                    footAlignment: [
+                        { max: 10, r: 0.05 },
+                        { max: 20, r: 0.3 },
+                        { max: 30, r: 0.65 },
+                        { max: Infinity, r: 0.9 },
+                    ],
+                    strikePitch: [
+                        { min: 0.001, r: 0.05 },
+                        { min: -5, r: 0.35 },
+                        { min: -10, r: 0.7 },
+                        { min: -Infinity, r: 0.9 },
+                    ],
+                },
+                weights: { hipTrajectory: 0.15, kneeFlexion: 0.35, footAlignment: 0.25, strikePitch: 0.25 },
+                interactions: { knee_x_hip: 12, foot_x_pitch: 12, knee_x_pitch: 8, hip_x_foot: 6 },
+                bands: { greenMax: 29, yellowMax: 59 },
+            },
+            aggressive: {
+                label: 'Aggressive',
+                curves: {
+                    hipTrajectory: [
+                        { max: -5.001, r: 0.8 },
+                        { max: 4.999, r: 0.55 },
+                        { max: 14.999, r: 0.25 },
+                        { max: Infinity, r: 0.05 },
+                    ],
+                    kneeFlexion: [
+                        { max: 155, r: 0.05 },
+                        { max: 165, r: 0.25 },
+                        { max: 175, r: 0.6 },
+                        { max: Infinity, r: 0.9 },
+                    ],
+                    footAlignment: [
+                        { max: 12, r: 0.05 },
+                        { max: 24, r: 0.3 },
+                        { max: 34, r: 0.65 },
+                        { max: Infinity, r: 0.9 },
+                    ],
+                    strikePitch: [
+                        { min: 2, r: 0.05 },
+                        { min: -7, r: 0.35 },
+                        { min: -12, r: 0.7 },
+                        { min: -Infinity, r: 0.9 },
+                    ],
+                },
+                weights: { hipTrajectory: 0.15, kneeFlexion: 0.35, footAlignment: 0.25, strikePitch: 0.25 },
+                interactions: { knee_x_hip: 10, foot_x_pitch: 10, knee_x_pitch: 6, hip_x_foot: 4 },
+                bands: { greenMax: 34, yellowMax: 69 },
+            },
+        };
+
+        let activeProfileKey = 'balanced';
+
+        function getActiveProfile() {
+            return RISK_PROFILES[activeProfileKey] || RISK_PROFILES.balanced;
+        }
+
+        // =========================================================
+        // RISK MODEL CALCULATION (SECONDARY TUNING/LOGIC SECTION)
+        // =========================================================
+        function evalPiecewiseByMax(value, curve) {
+            for (const p of curve) {
+                if (value <= p.max) return p.r;
+            }
+            return curve[curve.length - 1].r;
+        }
+
+        function evalPiecewiseByMin(value, curve) {
+            for (const p of curve) {
+                if (value >= p.min) return p.r;
+            }
+            return curve[curve.length - 1].r;
+        }
+
+        function riskLevelFromNormalized(r) {
+            if (r >= 0.7) return { txt: 'High', cls: 'bad' };
+            if (r >= 0.35) return { txt: 'Moderate', cls: 'warn' };
+            return { txt: 'Low', cls: 'ok' };
+        }
+
+        function computeRiskBreakdown() {
+            const profile = getActiveProfile();
+            const curves = profile.curves;
+            const weights = profile.weights;
+            const interactions = profile.interactions;
+
+            const sHip = evalPiecewiseByMax(state.hipTrajectory, curves.hipTrajectory);
+            const sKnee = evalPiecewiseByMax(state.kneeFlexion, curves.kneeFlexion);
+            const sFoot = evalPiecewiseByMax(state.footAlignment, curves.footAlignment);
+            const sPitch = evalPiecewiseByMin(state.strikePitch, curves.strikePitch);
+
+            const baseScore = 100 * (
+                weights.hipTrajectory * sHip +
+                weights.kneeFlexion * sKnee +
+                weights.footAlignment * sFoot +
+                weights.strikePitch * sPitch
+            );
+
+            const interactionScore =
+                interactions.knee_x_hip * (sKnee * sHip) +
+                interactions.foot_x_pitch * (sFoot * sPitch) +
+                interactions.knee_x_pitch * (sKnee * sPitch) +
+                interactions.hip_x_foot * (sHip * sFoot);
+
+            const totalRisk = clamp(baseScore + interactionScore, 0, 100);
+
+            return {
+                totalRisk,
+                baseScore,
+                interactionScore,
+                normalized: { sHip, sKnee, sFoot, sPitch },
+            };
+        }
 
         function getSafetyStatus() {
+            const breakdown = computeRiskBreakdown();
+            const n = breakdown.normalized;
             const alerts = [];
 
-            if (state.footAlignment > 15) alerts.push({ label: 'Lateral Shearing', value: 'HIGH RISK', cls: 'bad' });
-            else alerts.push({ label: 'Lateral Shearing', value: 'Normal', cls: 'ok' });
+            const hipLevel = riskLevelFromNormalized(n.sHip);
+            alerts.push({ label: 'Hip Control', value: hipLevel.txt, cls: hipLevel.cls });
 
-            if (state.kneeFlexion < 90) alerts.push({ label: 'Knee Overload', value: 'CRITICAL', cls: 'bad' });
-            else alerts.push({ label: 'Knee Load', value: 'Safe', cls: 'ok' });
+            const kneeLevel = riskLevelFromNormalized(n.sKnee);
+            alerts.push({ label: 'Knee Overload', value: kneeLevel.txt, cls: kneeLevel.cls });
 
-            if (state.strikePitch >= 0) alerts.push({ label: 'Kinetic Shock', value: 'SHOCK', cls: 'bad' });
-            else alerts.push({ label: 'Kinetic Shock', value: 'Roll-off', cls: 'ok' });
+            const footLevel = riskLevelFromNormalized(n.sFoot);
+            alerts.push({ label: 'Foot Alignment', value: footLevel.txt, cls: footLevel.cls });
 
-            return alerts;
+            const pitchLevel = riskLevelFromNormalized(n.sPitch);
+            alerts.push({ label: 'Kinetic Shock', value: pitchLevel.txt, cls: pitchLevel.cls });
+
+            alerts.push({ label: 'Base Score', value: breakdown.baseScore.toFixed(1), cls: 'warn' });
+            alerts.push({ label: 'Interaction Bonus', value: `+${breakdown.interactionScore.toFixed(1)}`, cls: 'warn' });
+            alerts.push({ label: 'Total Risk (0-100)', value: breakdown.totalRisk.toFixed(1), cls: 'bad' });
+
+            return { alerts, breakdown };
         }
 
         function setStatus() {
-            const dangerous = state.kneeFlexion < 90 || state.footAlignment > 15 || state.strikePitch >= 0;
-            els.status.textContent = dangerous ? '⚠️ Bio-Mechanical Risk Detected' : '✅ Form Optimal';
-            els.status.style.color = dangerous ? 'var(--bad)' : 'var(--ok)';
+            const { totalRisk } = computeRiskBreakdown();
+            const bands = getActiveProfile().bands;
+
+            if (totalRisk <= bands.greenMax) {
+                els.status.textContent = `✅ Form Optimal — Risk ${totalRisk.toFixed(1)}`;
+                els.status.style.color = 'var(--ok)';
+                return;
+            }
+
+            if (totalRisk <= bands.yellowMax) {
+                els.status.textContent = `⚠️ Caution Zone — Risk ${totalRisk.toFixed(1)}`;
+                els.status.style.color = 'var(--warn)';
+                return;
+            }
+
+            els.status.textContent = `⛔ High Injury Risk — Risk ${totalRisk.toFixed(1)}`;
+            els.status.style.color = 'var(--bad)';
         }
 
         function renderHUD() {
-            const alerts = getSafetyStatus();
+            const { alerts } = getSafetyStatus();
             els.hud.innerHTML = alerts.map(a => `
         <div class="hud-item">
           <span>${a.label}</span>
@@ -298,7 +504,6 @@
         grid.position.y = -0.149;
         scene.add(grid);
 
-        const bodyMat = new THREE.MeshStandardMaterial({ color: 0xc9d6e7, roughness: 0.65 });
         const thighMat = new THREE.MeshStandardMaterial({ color: 0x66b3ff, roughness: 0.5 });
         const shinMat = new THREE.MeshStandardMaterial({ color: 0xb08cff, roughness: 0.5 });
         const footMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.5 });
@@ -307,24 +512,6 @@
         const root = new THREE.Group();
         root.position.set(0, 1.1, 0);
         scene.add(root);
-
-        const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.45, 8, 16), bodyMat);
-        torso.position.set(0, 0.35, 0);
-        root.add(torso);
-
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 20, 16), bodyMat);
-        head.position.set(0, 0.72, 0);
-        root.add(head);
-
-        const armL = new THREE.Mesh(new THREE.CapsuleGeometry(0.04, 0.35, 6, 10), bodyMat);
-        armL.rotation.z = Math.PI / 2.6;
-        armL.position.set(-0.2, 0.42, 0);
-        root.add(armL);
-
-        const armR = armL.clone();
-        armR.rotation.z = -Math.PI / 2.6;
-        armR.position.set(0.2, 0.42, 0);
-        root.add(armR);
 
         const hip = new THREE.Group();
         hip.position.set(0, 0.1, 0);
@@ -367,7 +554,8 @@
             ankle.rotation.x = toRad(state.strikePitch);
             ankle.rotation.y = toRad(state.footAlignment);
 
-            const shock = state.strikePitch >= 0;
+            const { normalized } = computeRiskBreakdown();
+            const shock = normalized.sPitch >= 0.7;
             foot.material = shock ? badMat : footMat;
 
             if (shock) {
@@ -395,6 +583,7 @@
             els.kneeFlexionVal.textContent = state.kneeFlexion;
             els.footAlignmentVal.textContent = state.footAlignment;
             els.strikePitchVal.textContent = state.strikePitch;
+            els.riskProfileVal.textContent = getActiveProfile().label;
             setStatus();
             renderHUD();
             renderScene();
@@ -412,16 +601,23 @@
         bindSlider('footAlignment', els.footAlignment);
         bindSlider('strikePitch', els.strikePitch);
 
+        els.riskProfile.addEventListener('change', () => {
+            activeProfileKey = els.riskProfile.value;
+            syncUI();
+        });
+
         els.resetBtn.addEventListener('click', () => {
             state.hipTrajectory = 0;
             state.kneeFlexion = 178;
             state.footAlignment = 0;
             state.strikePitch = 0;
+            activeProfileKey = 'balanced';
 
             els.hipTrajectory.value = String(state.hipTrajectory);
             els.kneeFlexion.value = String(state.kneeFlexion);
             els.footAlignment.value = String(state.footAlignment);
             els.strikePitch.value = String(state.strikePitch);
+            els.riskProfile.value = activeProfileKey;
 
             syncUI();
         });

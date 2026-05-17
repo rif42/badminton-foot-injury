@@ -1,0 +1,162 @@
+═══════════════════════════════════════════════════════════════════════════
+Token Analysis: Session ses_1c9ad1d3effe7QHLRi5TS08ZV0
+Model: gpt-5.3-codex
+═══════════════════════════════════════════════════════════════════════════
+
+TOKEN BREAKDOWN BY CATEGORY
+─────────────────────────────────────────────────────────────────────────
+Estimated using tokenizer analysis of message content:
+
+Input Categories:
+  USER      ██████████████████████████████        100.0% (48)
+
+  Subtotal: 48 estimated input tokens
+
+Output Categories:
+
+  Subtotal: 0 estimated output tokens
+
+Local Total: 48 tokens (estimated)
+
+TOOL USAGE BREAKDOWN
+─────────────────────────────────────────────────────────────────────────
+
+TOP CONTRIBUTORS
+─────────────────────────────────────────────────────────────────────────
+• User#1                       48 tokens (100.0%)
+
+═══════════════════════════════════════════════════════════════════════════
+MOST RECENT API CALL
+─────────────────────────────────────────────────────────────────────────
+
+Raw telemetry from last API response:
+  Input (fresh):              0 tokens
+  Cache read:                 0 tokens
+  Output:                     0 tokens
+  ─────────────────────────────────────
+  Total:                      0 tokens
+
+═══════════════════════════════════════════════════════════════════════════
+SESSION TOTALS (All 0 API calls)
+─────────────────────────────────────────────────────────────────────────
+
+Assistant messages observed: 1 (structural count)
+
+Total tokens processed across the entire session (for cost calculation):
+
+  Input tokens:               0 (fresh tokens across all calls)
+  Cache read:                 0 (cached tokens across all calls)
+  Cache write:                0 (tokens written to cache)
+  Output tokens:              0 (all model responses)
+  ─────────────────────────────────────
+  Session Total:              0 tokens (for billing)
+
+═══════════════════════════════════════════════════════════════════════════
+SESSION COST
+─────────────────────────────────────────────────────────────────────────
+
+Token usage breakdown:
+  Input tokens:               0
+  Output tokens:              0
+
+─────────────────────────────────────────────────────────────────────────
+ACTUAL COST (from API):  $0.0000
+
+Note: Actual cost from OpenCode includes provider-specific pricing
+and 200K+ context adjustments.
+
+══════════════════════════════════════════════════════════════════════════
+AVAILABLE SKILLS (always-available context)
+─────────────────────────────────────────────────────────────────────────
+
+OpenCode currently includes a verbose skill catalog in the system prompt on every API call.
+The rows below estimate the per-skill XML entries inside that shared catalog.
+
+  Skill                  Description                                   Tokens
+  ───────────────────────────────────────────────────────────────────────
+  playwright-best-pract… Use when writing Playwright tests, fixing fl…    ~261
+  agent-browser          Browser automation CLI for AI agents. Use wh…    ~247
+  xlsx                   Use this skill any time a spreadsheet file i…    ~247
+  session-handoff        Creates comprehensive handoff documents for …    ~185
+  cavecrew               Decision guide for delegating to caveman-sty…    ~179
+  caveman                Ultra-compressed communication mode. Cuts to…    ~145
+  customize-opencode     Use ONLY when the user is editing or creatin…    ~138
+  routeros-netinstall    MikroTik netinstall-cli for automated Router…    ~130
+  caveman-commit         Ultra-compressed commit message generator. C…    ~127
+  caveman-compress       Compress natural language memory files (CLAU…    ~126
+  frontend-design        Create distinctive, production-grade fronten…    ~122
+  caveman-review         Ultra-compressed code review comments. Cuts …    ~120
+  compress               Compress natural language memory files (CLAU…    ~120
+  obsidian-markdown      Create and edit Obsidian Flavored Markdown w…    ~116
+  playwright-core        Battle-tested Playwright patterns for writin…    ~116
+  playwright-cli         Automates browser interactions for testing a…    ~114
+  find-skills            Helps users discover and install agent skill…    ~113
+  laravel-filament       Filament v5 admin-panel reference skill: res…    ~112
+  playwright-skill       Battle-tested Playwright patterns for writin…    ~112
+  obsidian-bases         Create and edit Obsidian Bases (.base files)…    ~110
+  theme-factory          Toolkit for styling artifacts with a theme. …    ~108
+  mermaid-visualizer     Transform text content into professional Mer…    ~107
+  write-spec             Write a feature spec or PRD from a problem s…    ~105
+  caveman-stats          Show real token usage and estimated savings …    ~104
+  revealjs               Create polished, professional reveal.js pres…    ~104
+  caveman-help           Quick-reference card for all caveman modes, …    ~103
+  web-research           Searches multiple web sources, synthesizes f…    ~102
+  postgresql-optimizati… PostgreSQL-specific development assistant fo…    ~101
+  pyqt6-ui-development-… PyQt6 desktop GUI development rules -- signa…     ~98
+  playwright-ci          Production-ready CI/CD configurations for Pl…     ~97
+  interview-plan         Run an oh-my-opencode-slim interview first, …     ~96
+  scikit-image           A collection of algorithms for image process…     ~92
+  playwright-pom         Page Object Model patterns for Playwright — …     ~84
+  codemap                Generate comprehensive hierarchical codemaps…     ~83
+  postgresql-table-desi… Use this skill when designing or reviewing a…     ~83
+  playwright-migration   Step-by-step migration guides for moving to …     ~82
+  gepetto                Creates detailed, sectionized implementation…     ~81
+  computer-vision-opencv Expert guidance for computer vision developm…     ~80
+  simplify               Simplifies code for clarity without changing…     ~73
+  numpy-best-practices   Best practices for NumPy array programming, …     ~71
+  ───────────────────────────────────────────────────────────────────────
+  Total: ~4,794 tokens (40 skills available)
+
+  Note: Full system-prompt skill catalog is ~4,827 tokens (includes shared wrapper/preamble).
+        Compact skill tool description adds ~3,100 tokens more.
+
+═══════════════════════════════════════════════════════════════════════════
+AVAILABLE SUBAGENTS (in task tool definition)
+─────────────────────────────────────────────────────────────────────────
+
+These subagents are embedded in the task tool description and consume tokens on every API call.
+
+  Subagent               Description                                        Tokens
+  ───────────────────────────────────────────────────────────────────────
+  explorer               Fast codebase search and pattern matching. Use fo…     ~29
+  designer               UI/UX design, review, and implementation. Use for…     ~26
+  councillor             Read-only council advisor. Examines codebase and …     ~25
+  oracle                 Strategic technical advisor. Use for architecture…     ~25
+  librarian              External documentation and library research. Use …     ~23
+  fixer                  Fast implementation specialist. Receives complete…     ~21
+  ───────────────────────────────────────────────────────────────────────
+  Total: ~149 tokens (6 subagents available)
+
+  Note: Full task tool description is ~650 tokens (includes instructions/examples).
+
+═══════════════════════════════════════════════════════════════════════════
+TOOL DEFINITION COSTS (Estimated from argument analysis)
+─────────────────────────────────────────────────────────────────────────
+
+  Tool                Est. Tokens   Args   Complexity
+  ───────────────────────────────────────────────────────────────────
+  tokenscope                 ~370       3   simple
+  ───────────────────────────────────────────────────────────────────
+  Total:             ~        370 tokens (1 enabled tools)
+
+  Note: Estimates inferred from tool call arguments in this session.
+        Actual schema tokens may vary +/-20%.
+
+═══════════════════════════════════════════════════════════════════════════
+SUMMARY
+─────────────────────────────────────────────────────────────────────────
+
+                          Cost        Tokens          API Calls
+  Session:           $    0.0000             0             0
+
+═══════════════════════════════════════════════════════════════════════════
