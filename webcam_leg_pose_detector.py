@@ -11,11 +11,26 @@ from __future__ import annotations
 import sys
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from types import TracebackType
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import cv2
 import mediapipe as mp
 import numpy as np
+
+
+# MediaPipe's results.pose_landmarks is a NormalizedLandmarkList protobuf.
+# Expose a stable alias so callers do not depend on internal module paths.
+LandmarkList = Any
+
+__all__ = [
+    "LOWER_BODY_CONNECTIONS",
+    "LOWER_BODY_LANDMARKS",
+    "LandmarkList",
+    "PoseDetector",
+    "PoseDetectorConfig",
+    "main",
+]
 
 
 # MediaPipe Pose landmark indices for the lower body.
@@ -84,7 +99,7 @@ class PoseDetector:
 
     def process(
         self, frame: np.ndarray
-    ) -> Optional[mp.solutions.pose.PoseLandmark]:
+    ) -> Optional[LandmarkList]:
         """Run pose detection on a BGR frame and return raw landmarks if found."""
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.pose.process(rgb_frame)
@@ -93,7 +108,7 @@ class PoseDetector:
     def draw_landmarks(
         self,
         frame: np.ndarray,
-        landmarks: mp.solutions.pose.PoseLandmark,
+        landmarks: LandmarkList,
         landmark_color: Tuple[int, int, int] = LANDMARK_COLOR,
         connection_color: Tuple[int, int, int] = CONNECTION_COLOR,
     ) -> np.ndarray:
@@ -127,9 +142,16 @@ class PoseDetector:
 
     @staticmethod
     def get_lower_body_landmarks(
-        landmarks: mp.solutions.pose.PoseLandmark,
+        landmarks: LandmarkList,
     ) -> Dict[str, Tuple[float, float, float, float]]:
-        """Return a dictionary of {joint_name: (x, y, z, visibility)} for the lower body."""
+        """Return a dictionary of {joint_name: (x, y, z, visibility)} for the lower body.
+
+        Note:
+            If the frame was horizontally flipped for mirror display before
+            detection (as ``main()`` does), the ``left_*`` / ``right_*`` keys
+            are relative to the mirrored image (screen left/right), not the
+            physical body sides of the person in front of the camera.
+        """
         result: Dict[str, Tuple[float, float, float, float]] = {}
         for name, idx in LOWER_BODY_LANDMARKS.items():
             lm = landmarks.landmark[idx]
@@ -140,19 +162,35 @@ class PoseDetector:
         """Release MediaPipe Pose resources."""
         self.pose.close()
 
+    def __enter__(self) -> "PoseDetector":
+        return self
 
-def main() -> int:
-    """Open the webcam, run lower-body pose detection, and display the annotated feed."""
-    detector = PoseDetector()
-    cap = cv2.VideoCapture(detector.config.camera_index)
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
+        self.close()
+
+
+def main(config: Optional[PoseDetectorConfig] = None) -> int:
+    """Open the webcam, run lower-body pose detection, and display the annotated feed.
+
+    Args:
+        config: Optional PoseDetectorConfig to override defaults. The camera
+            index is read from this config.
+    """
+    camera_index = config.camera_index if config is not None else 0
+    cap = cv2.VideoCapture(camera_index)
 
     if not cap.isOpened():
-        print(f"Error: Could not open camera at index {detector.config.camera_index}.")
+        print(f"Error: Could not open camera at index {camera_index}.")
         cap.release()
         cv2.destroyAllWindows()
-        detector.close()
         return 1
 
+    detector = PoseDetector(config)
     consecutive_frame_failures = 0
     try:
         while True:
@@ -165,11 +203,14 @@ def main() -> int:
                 )
                 if consecutive_frame_failures >= MAX_FRAME_RETRIES:
                     print("Error: Exceeded maximum frame read retries; exiting.")
-                    break
+                    return 1
                 time.sleep(FRAME_RETRY_DELAY_SECONDS)
                 continue
 
             consecutive_frame_failures = 0
+            # Mirror the frame for a more natural selfie-style display.
+            # Detection therefore runs on the mirrored image, so left/right
+            # landmark keys are screen-relative.
             frame = cv2.flip(frame, 1)
             landmarks = detector.process(frame)
 

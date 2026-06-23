@@ -6,7 +6,7 @@ drawing, extraction helpers, and error handling.
 """
 
 import unittest
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 
@@ -171,14 +171,26 @@ class TestPoseDetector(unittest.TestCase):
                 result[name], (idx / 100.0, idx / 100.0, 0.0, 1.0)
             )
 
+    @patch.object(detector_module.mp.solutions.pose, "Pose")
+    def test_context_manager_closes_pose(self, mock_pose_cls):
+        """PoseDetector can be used as a context manager and closes on exit."""
+        mock_instance = MagicMock()
+        mock_pose_cls.return_value = mock_instance
+
+        with PoseDetector() as detector:
+            self.assertIsInstance(detector, PoseDetector)
+
+        mock_instance.close.assert_called_once()
+
 
 class TestMain(unittest.TestCase):
     """Tests for the main() capture loop."""
 
+    @patch.object(detector_module.mp.solutions.pose, "Pose")
     @patch.object(detector_module.cv2, "destroyAllWindows")
     @patch.object(detector_module.cv2, "VideoCapture")
     def test_main_exits_when_camera_fails_to_open(
-        self, mock_video_capture, mock_destroy
+        self, mock_video_capture, mock_destroy, mock_pose_cls
     ):
         """main() prints an error and exits immediately if the camera cannot open."""
         mock_cap = MagicMock()
@@ -191,8 +203,33 @@ class TestMain(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         mock_cap.release.assert_called_once()
         mock_destroy.assert_called_once()
+        mock_pose_cls.assert_not_called()
         printed = " ".join(str(c) for c in mock_print.call_args_list)
         self.assertIn("Could not open camera", printed)
+
+    @patch.object(detector_module.mp.solutions.pose, "Pose")
+    @patch.object(detector_module.cv2, "destroyAllWindows")
+    @patch.object(detector_module.cv2, "waitKey", return_value=ord("q"))
+    @patch.object(detector_module.cv2, "imshow")
+    @patch.object(detector_module.cv2, "flip", side_effect=lambda f, _: f)
+    @patch.object(detector_module.cv2, "VideoCapture")
+    def test_main_uses_config_camera_index(
+        self, mock_video_capture, mock_flip, mock_imshow, mock_waitKey, mock_destroy, mock_pose_cls
+    ):
+        """main() uses the camera index from an optional PoseDetectorConfig."""
+        fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        mock_cap = MagicMock()
+        mock_cap.isOpened.return_value = True
+        mock_cap.read.return_value = (True, fake_frame)
+        mock_video_capture.return_value = mock_cap
+
+        config = PoseDetectorConfig(camera_index=2)
+        with patch.object(PoseDetector, "process", return_value=None):
+            exit_code = main(config)
+
+        self.assertEqual(exit_code, 0)
+        mock_video_capture.assert_called_once_with(2)
 
     @patch.object(detector_module.cv2, "destroyAllWindows")
     @patch.object(detector_module.cv2, "waitKey", return_value=ord("q"))
@@ -283,7 +320,7 @@ class TestMain(unittest.TestCase):
                 with patch("builtins.print") as mock_print:
                     exit_code = main()
 
-        self.assertEqual(exit_code, 0)
+        self.assertEqual(exit_code, 1)
         self.assertEqual(mock_cap.read.call_count, detector_module.MAX_FRAME_RETRIES)
         self.assertEqual(mock_sleep.call_count, detector_module.MAX_FRAME_RETRIES - 1)
         mock_imshow.assert_not_called()
