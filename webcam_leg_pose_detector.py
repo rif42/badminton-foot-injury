@@ -12,18 +12,21 @@ import sys
 import time
 from dataclasses import dataclass
 from types import TracebackType
-from typing import Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import cv2
 import mediapipe as mp
 import numpy as np
-from mediapipe.framework.formats.landmark_pb2 import NormalizedLandmarkList
+
+try:
+    from mediapipe.framework.formats.landmark_pb2 import NormalizedLandmarkList
+except ModuleNotFoundError:  # pragma: no cover - internal path may not exist in all builds
+    NormalizedLandmarkList = Any
 
 
 __all__ = [
     "LOWER_BODY_CONNECTIONS",
     "LOWER_BODY_LANDMARKS",
-    "NormalizedLandmarkList",
     "PoseDetector",
     "PoseDetectorConfig",
     "main",
@@ -75,7 +78,6 @@ FRAME_RETRY_DELAY_SECONDS: float = 0.05
 class PoseDetectorConfig:
     """Optional runtime configuration for PoseDetector."""
 
-    camera_index: int = 0
     detection_confidence: float = 0.5
     tracking_confidence: float = 0.5
     model_complexity: int = 0
@@ -109,7 +111,11 @@ class PoseDetector:
         landmark_color: Tuple[int, int, int] = LANDMARK_COLOR,
         connection_color: Tuple[int, int, int] = CONNECTION_COLOR,
     ) -> np.ndarray:
-        """Overlay lower-body landmarks and connections onto the frame."""
+        """Overlay lower-body landmarks and connections onto the frame.
+
+        Note:
+            This method mutates ``frame`` in place and returns the same object.
+        """
         height, width, _ = frame.shape
 
         def _point(index: int) -> Optional[Tuple[int, int]]:
@@ -146,6 +152,8 @@ class PoseDetector:
     ) -> Dict[str, Tuple[float, float, float, float]]:
         """Return a dictionary of {joint_name: (x, y, z, visibility)} for the lower body.
 
+        Missing landmark indices are silently omitted from the result.
+
         ``left_*`` / ``right_*`` keys refer to the physical left/right side of
         the person in the captured frame. ``main()`` mirrors the annotated
         image only for display, so the underlying landmarks keep their
@@ -153,7 +161,10 @@ class PoseDetector:
         """
         result: Dict[str, Tuple[float, float, float, float]] = {}
         for name, idx in LOWER_BODY_LANDMARKS.items():
-            lm = landmarks.landmark[idx]
+            try:
+                lm = landmarks.landmark[idx]
+            except (IndexError, KeyError):
+                continue
             result[name] = (lm.x, lm.y, lm.z, lm.visibility)
         return result
 
@@ -173,7 +184,9 @@ class PoseDetector:
         self.close()
 
 
-def main(config: Optional[PoseDetectorConfig] = None) -> int:
+def main(
+    camera_index: int = 0, config: Optional[PoseDetectorConfig] = None
+) -> int:
     """Open the webcam, run lower-body pose detection, and display the annotated feed.
 
     Pose detection runs on the original (unflipped) frame so ``left_*`` /
@@ -181,10 +194,9 @@ def main(config: Optional[PoseDetectorConfig] = None) -> int:
     mirrored horizontally before display for a selfie-style preview.
 
     Args:
-        config: Optional PoseDetectorConfig to override defaults. The camera
-            index is read from this config.
+        camera_index: OpenCV video capture device index.
+        config: Optional PoseDetectorConfig to override detection defaults.
     """
-    camera_index = config.camera_index if config is not None else 0
     cap = cv2.VideoCapture(camera_index)
 
     if not cap.isOpened():

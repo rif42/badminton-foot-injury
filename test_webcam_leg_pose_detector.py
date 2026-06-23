@@ -46,7 +46,6 @@ class TestPoseDetector(unittest.TestCase):
         """PoseDetector initializes with sensible defaults."""
         detector = PoseDetector()
 
-        self.assertEqual(detector.config.camera_index, 0)
         self.assertEqual(detector.config.detection_confidence, 0.5)
         self.assertEqual(detector.config.tracking_confidence, 0.5)
         self.assertEqual(detector.config.model_complexity, 0)
@@ -61,14 +60,12 @@ class TestPoseDetector(unittest.TestCase):
     def test_custom_initialization(self, mock_pose_cls):
         """PoseDetector accepts optional configuration."""
         config = PoseDetectorConfig(
-            camera_index=1,
             detection_confidence=0.7,
             tracking_confidence=0.7,
             model_complexity=1,
         )
         detector = PoseDetector(config)
 
-        self.assertEqual(detector.config.camera_index, 1)
         self.assertEqual(detector.config.detection_confidence, 0.7)
         self.assertEqual(detector.config.tracking_confidence, 0.7)
         self.assertEqual(detector.config.model_complexity, 1)
@@ -200,6 +197,21 @@ class TestPoseDetector(unittest.TestCase):
             )
 
     @patch.object(detector_module.mp.solutions.pose, "Pose")
+    def test_get_lower_body_landmarks_skips_missing_indices(self, mock_pose_cls):
+        """get_lower_body_landmarks() omits missing landmark indices."""
+        detector = PoseDetector()
+        landmarks = self._make_mock_landmarks()
+        del landmarks.landmark[23]
+        del landmarks.landmark[31]
+
+        result = detector.get_lower_body_landmarks(landmarks)
+
+        self.assertNotIn("left_hip", result)
+        self.assertNotIn("left_foot_index", result)
+        self.assertIn("right_hip", result)
+        self.assertIn("right_foot_index", result)
+
+    @patch.object(detector_module.mp.solutions.pose, "Pose")
     def test_context_manager_closes_pose(self, mock_pose_cls):
         """PoseDetector can be used as a context manager and closes on exit."""
         mock_instance = MagicMock()
@@ -241,10 +253,10 @@ class TestMain(unittest.TestCase):
     @patch.object(detector_module.cv2, "imshow")
     @patch.object(detector_module.cv2, "flip", side_effect=lambda f, _: f)
     @patch.object(detector_module.cv2, "VideoCapture")
-    def test_main_uses_config_camera_index(
+    def test_main_uses_custom_camera_index(
         self, mock_video_capture, mock_flip, mock_imshow, mock_waitKey, mock_destroy, mock_pose_cls
     ):
-        """main() uses the camera index from an optional PoseDetectorConfig."""
+        """main() uses a custom camera index passed as an argument."""
         fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
 
         mock_cap = MagicMock()
@@ -252,9 +264,9 @@ class TestMain(unittest.TestCase):
         mock_cap.read.return_value = (True, fake_frame)
         mock_video_capture.return_value = mock_cap
 
-        config = PoseDetectorConfig(camera_index=2)
+        config = PoseDetectorConfig(detection_confidence=0.7)
         with patch.object(PoseDetector, "process", return_value=None):
-            exit_code = main(config)
+            exit_code = main(camera_index=2, config=config)
 
         self.assertEqual(exit_code, 0)
         mock_video_capture.assert_called_once_with(2)
@@ -286,7 +298,7 @@ class TestMain(unittest.TestCase):
             detector_module.mp.solutions.pose, "Pose", return_value=mock_pose_instance
         ):
             with patch.object(
-                PoseDetector, "draw_landmarks", return_value=fake_frame
+                PoseDetector, "draw_landmarks", side_effect=lambda f, lm: f
             ) as mock_draw:
                 exit_code = main()
 
