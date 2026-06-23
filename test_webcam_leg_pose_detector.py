@@ -24,16 +24,21 @@ class TestPoseDetector(unittest.TestCase):
     """Tests for the PoseDetector class."""
 
     def _make_mock_landmarks(self):
-        """Build a mock MediaPipe landmarks object with all lower-body joints."""
+        """Build a mock MediaPipe landmarks object with 33 landmarks."""
         landmarks = MagicMock()
+        # MediaPipe Pose returns 33 landmarks indexed 0-32.
         landmarks.landmark = {}
-        for idx in LOWER_BODY_LANDMARKS.values():
+        for idx in range(33):
             lm = MagicMock()
-            lm.x = idx / 100.0
-            lm.y = idx / 100.0
+            lm.x = 0.0
+            lm.y = 0.0
             lm.z = 0.0
             lm.visibility = 1.0
             landmarks.landmark[idx] = lm
+        for idx in LOWER_BODY_LANDMARKS.values():
+            lm = landmarks.landmark[idx]
+            lm.x = idx / 100.0
+            lm.y = idx / 100.0
         return landmarks
 
     @patch.object(detector_module.mp.solutions.pose, "Pose")
@@ -158,6 +163,29 @@ class TestPoseDetector(unittest.TestCase):
         mock_line.assert_not_called()
 
     @patch.object(detector_module.mp.solutions.pose, "Pose")
+    @patch.object(detector_module.cv2, "circle")
+    @patch.object(detector_module.cv2, "line")
+    def test_draw_landmarks_skips_missing_indices(
+        self, mock_line, mock_circle, mock_pose_cls
+    ):
+        """draw_landmarks() skips missing landmark indices without raising."""
+        detector = PoseDetector()
+        landmarks = self._make_mock_landmarks()
+        # Remove a few landmarks to simulate a partial result.
+        del landmarks.landmark[23]
+        del landmarks.landmark[25]
+        del landmarks.landmark[27]
+
+        fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        detector.draw_landmarks(fake_frame, landmarks)
+
+        # No lines or circles should be drawn for the missing left leg,
+        # but the right leg landmarks are still drawn (plus 29-31 on the left).
+        expected_circles = len(LOWER_BODY_LANDMARKS) - 3
+        self.assertEqual(mock_circle.call_count, expected_circles)
+        self.assertEqual(mock_line.call_count, 6)
+
+    @patch.object(detector_module.mp.solutions.pose, "Pose")
     def test_get_lower_body_landmarks_format(self, mock_pose_cls):
         """get_lower_body_landmarks() returns the expected dictionary format."""
         detector = PoseDetector()
@@ -202,7 +230,7 @@ class TestMain(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
         mock_cap.release.assert_called_once()
-        mock_destroy.assert_called_once()
+        mock_destroy.assert_not_called()
         mock_pose_cls.assert_not_called()
         printed = " ".join(str(c) for c in mock_print.call_args_list)
         self.assertIn("Could not open camera", printed)
@@ -258,7 +286,7 @@ class TestMain(unittest.TestCase):
             detector_module.mp.solutions.pose, "Pose", return_value=mock_pose_instance
         ):
             with patch.object(
-                PoseDetector, "draw_landmarks"
+                PoseDetector, "draw_landmarks", return_value=fake_frame
             ) as mock_draw:
                 exit_code = main()
 
@@ -266,6 +294,35 @@ class TestMain(unittest.TestCase):
         mock_flip.assert_called_once_with(fake_frame, 1)
         mock_imshow.assert_called_once()
         mock_draw.assert_called_once()
+        mock_cap.release.assert_called_once()
+        mock_destroy.assert_called_once()
+
+    @patch.object(detector_module.mp.solutions.pose, "Pose")
+    @patch.object(detector_module.cv2, "destroyAllWindows")
+    @patch.object(detector_module.cv2, "waitKey", return_value=ord("q"))
+    @patch.object(detector_module.cv2, "imshow")
+    @patch.object(detector_module.cv2, "flip", side_effect=lambda f, _: f)
+    @patch.object(detector_module.cv2, "VideoCapture")
+    def test_main_shows_original_frame_when_no_pose(
+        self, mock_video_capture, mock_flip, mock_imshow, mock_waitKey, mock_destroy, mock_pose_cls
+    ):
+        """main() shows the original flipped frame when no pose is detected."""
+        fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        mock_cap = MagicMock()
+        mock_cap.isOpened.return_value = True
+        mock_cap.read.return_value = (True, fake_frame)
+        mock_video_capture.return_value = mock_cap
+
+        with patch.object(PoseDetector, "process", return_value=None) as mock_process:
+            with patch.object(PoseDetector, "draw_landmarks") as mock_draw:
+                exit_code = main()
+
+        self.assertEqual(exit_code, 0)
+        mock_process.assert_called_once_with(fake_frame)
+        mock_draw.assert_not_called()
+        mock_flip.assert_called_once_with(fake_frame, 1)
+        mock_imshow.assert_called_once_with("Lower-Body Pose Detector", fake_frame)
         mock_cap.release.assert_called_once()
         mock_destroy.assert_called_once()
 

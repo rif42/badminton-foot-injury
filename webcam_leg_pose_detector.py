@@ -12,21 +12,18 @@ import sys
 import time
 from dataclasses import dataclass
 from types import TracebackType
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Dict, List, Optional, Tuple, Type
 
 import cv2
 import mediapipe as mp
 import numpy as np
+from mediapipe.framework.formats.landmark_pb2 import NormalizedLandmarkList
 
-
-# MediaPipe's results.pose_landmarks is a NormalizedLandmarkList protobuf.
-# Expose a stable alias so callers do not depend on internal module paths.
-LandmarkList = Any
 
 __all__ = [
     "LOWER_BODY_CONNECTIONS",
     "LOWER_BODY_LANDMARKS",
-    "LandmarkList",
+    "NormalizedLandmarkList",
     "PoseDetector",
     "PoseDetectorConfig",
     "main",
@@ -89,8 +86,8 @@ class PoseDetector:
 
     def __init__(self, config: Optional[PoseDetectorConfig] = None) -> None:
         self.config = config if config is not None else PoseDetectorConfig()
-        self.mp_pose = mp.solutions.pose
-        self.pose = self.mp_pose.Pose(
+        mp_pose = mp.solutions.pose
+        self.pose = mp_pose.Pose(
             static_image_mode=False,
             model_complexity=self.config.model_complexity,
             min_detection_confidence=self.config.detection_confidence,
@@ -99,7 +96,7 @@ class PoseDetector:
 
     def process(
         self, frame: np.ndarray
-    ) -> Optional[LandmarkList]:
+    ) -> Optional[NormalizedLandmarkList]:
         """Run pose detection on a BGR frame and return raw landmarks if found."""
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.pose.process(rgb_frame)
@@ -108,7 +105,7 @@ class PoseDetector:
     def draw_landmarks(
         self,
         frame: np.ndarray,
-        landmarks: LandmarkList,
+        landmarks: NormalizedLandmarkList,
         landmark_color: Tuple[int, int, int] = LANDMARK_COLOR,
         connection_color: Tuple[int, int, int] = CONNECTION_COLOR,
     ) -> np.ndarray:
@@ -116,7 +113,10 @@ class PoseDetector:
         height, width, _ = frame.shape
 
         def _point(index: int) -> Optional[Tuple[int, int]]:
-            lm = landmarks.landmark[index]
+            try:
+                lm = landmarks.landmark[index]
+            except (IndexError, KeyError):
+                return None
             if lm.visibility < VISIBILITY_THRESHOLD:
                 return None
             return int(lm.x * width), int(lm.y * height)
@@ -142,15 +142,14 @@ class PoseDetector:
 
     @staticmethod
     def get_lower_body_landmarks(
-        landmarks: LandmarkList,
+        landmarks: NormalizedLandmarkList,
     ) -> Dict[str, Tuple[float, float, float, float]]:
         """Return a dictionary of {joint_name: (x, y, z, visibility)} for the lower body.
 
-        Note:
-            If the frame was horizontally flipped for mirror display before
-            detection (as ``main()`` does), the ``left_*`` / ``right_*`` keys
-            are relative to the mirrored image (screen left/right), not the
-            physical body sides of the person in front of the camera.
+        ``left_*`` / ``right_*`` keys refer to the physical left/right side of
+        the person in the captured frame. ``main()`` mirrors the annotated
+        image only for display, so the underlying landmarks keep their
+        physical-body semantics.
         """
         result: Dict[str, Tuple[float, float, float, float]] = {}
         for name, idx in LOWER_BODY_LANDMARKS.items():
@@ -177,6 +176,10 @@ class PoseDetector:
 def main(config: Optional[PoseDetectorConfig] = None) -> int:
     """Open the webcam, run lower-body pose detection, and display the annotated feed.
 
+    Pose detection runs on the original (unflipped) frame so ``left_*`` /
+    ``right_*`` landmarks retain physical-body meaning. The annotated frame is
+    mirrored horizontally before display for a selfie-style preview.
+
     Args:
         config: Optional PoseDetectorConfig to override defaults. The camera
             index is read from this config.
@@ -187,43 +190,40 @@ def main(config: Optional[PoseDetectorConfig] = None) -> int:
     if not cap.isOpened():
         print(f"Error: Could not open camera at index {camera_index}.")
         cap.release()
-        cv2.destroyAllWindows()
         return 1
 
-    detector = PoseDetector(config)
     consecutive_frame_failures = 0
     try:
-        while True:
-            ret, frame = cap.read()
-            if not ret or frame is None:
-                consecutive_frame_failures += 1
-                print(
-                    f"Warning: Failed to read frame "
-                    f"({consecutive_frame_failures}/{MAX_FRAME_RETRIES})."
-                )
-                if consecutive_frame_failures >= MAX_FRAME_RETRIES:
-                    print("Error: Exceeded maximum frame read retries; exiting.")
-                    return 1
-                time.sleep(FRAME_RETRY_DELAY_SECONDS)
-                continue
+        with PoseDetector(config) as detector:
+            while True:
+                ret, frame = cap.read()
+                if not ret or frame is None:
+                    consecutive_frame_failures += 1
+                    print(
+                        f"Warning: Failed to read frame "
+                        f"({consecutive_frame_failures}/{MAX_FRAME_RETRIES})."
+                    )
+                    if consecutive_frame_failures >= MAX_FRAME_RETRIES:
+                        print("Error: Exceeded maximum frame read retries; exiting.")
+                        return 1
+                    time.sleep(FRAME_RETRY_DELAY_SECONDS)
+                    continue
 
-            consecutive_frame_failures = 0
-            # Mirror the frame for a more natural selfie-style display.
-            # Detection therefore runs on the mirrored image, so left/right
-            # landmark keys are screen-relative.
-            frame = cv2.flip(frame, 1)
-            landmarks = detector.process(frame)
+                consecutive_frame_failures = 0
+                # Detect and draw on the original frame so left/right labels
+                # correspond to the physical body.
+                landmarks = detector.process(frame)
+                if landmarks is not None:
+                    detector.draw_landmarks(frame, landmarks)
 
-            if landmarks is not None:
-                detector.draw_landmarks(frame, landmarks)
-
-            cv2.imshow("Lower-Body Pose Detector", frame)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
+                # Mirror only for display.
+                display_frame = cv2.flip(frame, 1)
+                cv2.imshow("Lower-Body Pose Detector", display_frame)
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
     finally:
         cap.release()
         cv2.destroyAllWindows()
-        detector.close()
 
     return 0
 
