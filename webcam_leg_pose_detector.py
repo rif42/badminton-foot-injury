@@ -196,7 +196,10 @@ class PoseDetector:
 
 
 def main(
-    camera_index: int = 0, config: Optional[PoseDetectorConfig] = None
+    camera_index: int = 0,
+    config: Optional[PoseDetectorConfig] = None,
+    *,
+    debug: bool = False,
 ) -> int:
     """Open the webcam, run lower-body pose detection, and display the annotated feed.
 
@@ -207,6 +210,8 @@ def main(
     Args:
         camera_index: OpenCV video capture device index.
         config: Optional PoseDetectorConfig to override detection defaults.
+        debug: If True, print detection status and lower-body landmark
+            visibilities each frame to help diagnose tracking problems.
     """
     cap = cv2.VideoCapture(camera_index)
 
@@ -238,6 +243,16 @@ def main(
                 landmarks = detector.process(frame)
                 if landmarks is not None:
                     detector.draw_landmarks(frame, landmarks)
+                    if debug:
+                        print(
+                            f"Detected {len(landmarks.landmark)} landmarks. "
+                            "Lower-body visibilities:"
+                        )
+                        for name, idx in LOWER_BODY_LANDMARKS.items():
+                            lm = landmarks.landmark[idx]
+                            print(f"  {name}: {lm.visibility:.2f}")
+                elif debug:
+                    print("No pose detected.")
 
                 # Mirror only for display.
                 display_frame = cv2.flip(frame, 1)
@@ -252,4 +267,5 @@ def main(
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    debug_mode = "--debug" in sys.argv
+    sys.exit(main(debug=debug_mode))

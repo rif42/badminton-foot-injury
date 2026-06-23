@@ -20,26 +20,31 @@ from webcam_leg_pose_detector import (
 )
 
 
+def _make_mock_landmarks():
+    """Build a mock MediaPipe landmarks object with 33 landmarks."""
+    landmarks = MagicMock()
+    # MediaPipe Pose returns 33 landmarks indexed 0-32.
+    landmarks.landmark = {}
+    for idx in range(33):
+        lm = MagicMock()
+        lm.x = 0.0
+        lm.y = 0.0
+        lm.z = 0.0
+        lm.visibility = 1.0
+        landmarks.landmark[idx] = lm
+    for idx in LOWER_BODY_LANDMARKS.values():
+        lm = landmarks.landmark[idx]
+        lm.x = idx / 100.0
+        lm.y = idx / 100.0
+    return landmarks
+
+
 class TestPoseDetector(unittest.TestCase):
     """Tests for the PoseDetector class."""
 
     def _make_mock_landmarks(self):
         """Build a mock MediaPipe landmarks object with 33 landmarks."""
-        landmarks = MagicMock()
-        # MediaPipe Pose returns 33 landmarks indexed 0-32.
-        landmarks.landmark = {}
-        for idx in range(33):
-            lm = MagicMock()
-            lm.x = 0.0
-            lm.y = 0.0
-            lm.z = 0.0
-            lm.visibility = 1.0
-            landmarks.landmark[idx] = lm
-        for idx in LOWER_BODY_LANDMARKS.values():
-            lm = landmarks.landmark[idx]
-            lm.x = idx / 100.0
-            lm.y = idx / 100.0
-        return landmarks
+        return _make_mock_landmarks()
 
     @patch.object(detector_module.mp.solutions.pose, "Pose")
     def test_default_initialization(self, mock_pose_cls):
@@ -308,6 +313,41 @@ class TestMain(unittest.TestCase):
         mock_draw.assert_called_once()
         mock_cap.release.assert_called_once()
         mock_destroy.assert_called_once()
+
+    @patch.object(detector_module.cv2, "destroyAllWindows")
+    @patch.object(detector_module.cv2, "waitKey", return_value=ord("q"))
+    @patch.object(detector_module.cv2, "imshow")
+    @patch.object(detector_module.cv2, "flip", side_effect=lambda f, _: f)
+    @patch.object(detector_module.cv2, "VideoCapture")
+    def test_main_debug_mode_prints_landmark_visibilities(
+        self, mock_video_capture, mock_flip, mock_imshow, mock_waitKey, mock_destroy
+    ):
+        """main(debug=True) prints detection status and landmark visibilities."""
+        fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        mock_cap = MagicMock()
+        mock_cap.isOpened.return_value = True
+        mock_cap.read.return_value = (True, fake_frame)
+        mock_video_capture.return_value = mock_cap
+
+        landmarks = _make_mock_landmarks()
+
+        with patch.object(
+            detector_module.mp.solutions.pose, "Pose"
+        ) as mock_pose_cls:
+            mock_pose_instance = MagicMock()
+            mock_results = MagicMock()
+            mock_results.pose_landmarks = landmarks
+            mock_pose_instance.process.return_value = mock_results
+            mock_pose_cls.return_value = mock_pose_instance
+
+            with patch("builtins.print") as mock_print:
+                exit_code = main(debug=True)
+
+        self.assertEqual(exit_code, 0)
+        printed = " ".join(str(c) for c in mock_print.call_args_list)
+        self.assertIn("Detected 33 landmarks", printed)
+        self.assertIn("left_hip:", printed)
 
     @patch.object(detector_module.mp.solutions.pose, "Pose")
     @patch.object(detector_module.cv2, "destroyAllWindows")
