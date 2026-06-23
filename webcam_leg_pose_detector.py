@@ -8,6 +8,7 @@ landmark extraction is exposed so follow-up modules can consume it directly.
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from dataclasses import dataclass
@@ -15,8 +16,18 @@ from types import TracebackType
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import cv2
-import mediapipe as mp
 import numpy as np
+
+# Suppress verbose MediaPipe / TensorFlow Lite runtime logging.
+# These must be set before importing mediapipe to take effect.
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+os.environ.setdefault("GLOG_minloglevel", "2")
+
+import absl.logging  # isort: split
+
+absl.logging.set_verbosity(absl.logging.ERROR)
+
+import mediapipe as mp  # isort: split
 
 try:
     from mediapipe.framework.formats.landmark_pb2 import NormalizedLandmarkList
