@@ -5,6 +5,7 @@ import pytest
 from injury_risk import (
     PROFILE_PRESETS,
     REQUIRED_JOINTS,
+    RiskModel,
     RiskProfile,
     RiskResult,
     compute_base_score,
@@ -170,3 +171,60 @@ class TestParameterExtraction:
         }
         pitch = compute_landing_pitch(landmarks, "left", frame_shape)
         assert pitch < 0
+
+
+def _make_safe_landmarks():
+    def lm(x, y, v=1.0):
+        return (x, y, 0.0, v)
+
+    return {
+        "left_hip": lm(0.45, 0.35),
+        "right_hip": lm(0.55, 0.35),
+        "left_knee": lm(0.45, 0.55),
+        "right_knee": lm(0.55, 0.55),
+        "left_ankle": lm(0.45, 0.8),
+        "right_ankle": lm(0.55, 0.8),
+        "left_heel": lm(0.43, 0.82),
+        "right_heel": lm(0.53, 0.82),
+        "left_foot_index": lm(0.47, 0.81),
+        "right_foot_index": lm(0.57, 0.81),
+    }
+
+
+class TestRiskModel:
+    def test_update_returns_none_when_landmarks_missing(self):
+        model = RiskModel()
+        assert model.update({"left_hip": (0.5, 0.5, 0.0, 1.0)}, (480, 640)) is None
+
+    def test_update_returns_risk_result_after_history_fills(self):
+        model = RiskModel()
+        frame_shape = (480, 640)
+        result = None
+        for _ in range(5):
+            result = model.update(_make_safe_landmarks(), frame_shape)
+        assert isinstance(result, RiskResult)
+        assert 0.0 <= result.total_risk <= 100.0
+        assert result.status in {"Optimal", "Caution", "High Risk"}
+        assert result.profile_label == "Balanced"
+
+    def test_profile_switching(self):
+        model = RiskModel()
+        assert model.profile.key == "balanced"
+        model.set_profile("conservative")
+        assert model.profile.key == "conservative"
+        model.cycle_profile()
+        assert model.profile.key == "aggressive"
+        model.cycle_profile()
+        assert model.profile.key == "balanced"
+
+    def test_smoothing_averages_over_window(self):
+        model = RiskModel(smoothing_window=3)
+        frame_shape = (480, 640)
+        first = None
+        for i in range(5):
+            lm = _make_safe_landmarks()
+            # Move ankles down each frame to create changing geometry.
+            lm["left_ankle"] = (lm["left_ankle"][0], 0.75 + i * 0.01, 0.0, 1.0)
+            lm["right_ankle"] = (lm["right_ankle"][0], 0.75 + i * 0.01, 0.0, 1.0)
+            first = model.update(lm, frame_shape)
+        assert first is not None

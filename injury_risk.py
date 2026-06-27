@@ -8,6 +8,7 @@ smooths the output over time.
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -341,3 +342,164 @@ def compute_hip_trajectory_deviation(
     vertical_angle = -90.0
     diff = abs((velocity_angle - vertical_angle + 180) % 360 - 180)
     return diff
+
+
+class RiskModel:
+    """Maintains pose history and produces smoothed injury-risk scores."""
+
+    def __init__(
+        self,
+        profile_key: str = "balanced",
+        *,
+        hip_history_size: int = 5,
+        smoothing_window: int = 3,
+    ) -> None:
+        self.profile = RiskProfile.from_preset(profile_key)
+        self._hip_history_size = hip_history_size
+        self._smoothing_window = smoothing_window
+        self._hip_history: deque[tuple[float, float]] = deque(maxlen=hip_history_size)
+        self._result_history: deque[RiskResult] = deque(maxlen=smoothing_window)
+
+    def set_profile(self, profile_key: str) -> None:
+        """Switch to a built-in profile."""
+        if profile_key not in PROFILE_PRESETS:
+            raise KeyError(f"Unknown profile: {profile_key}")
+        self.profile = RiskProfile.from_preset(profile_key)
+
+    def cycle_profile(self) -> None:
+        """Cycle through balanced -> conservative -> aggressive -> balanced."""
+        order = ["balanced", "conservative", "aggressive"]
+        idx = order.index(self.profile.key)
+        next_idx = (idx + 1) % len(order)
+        self.set_profile(order[next_idx])
+
+    def update(
+        self,
+        landmarks: dict[str, tuple[float, float, float, float]],
+        frame_shape: tuple[int, int],
+    ) -> Optional[RiskResult]:
+        """Evaluate risk for the current frame.
+
+        Returns ``None`` when required landmarks are missing or the hip
+        velocity history has not yet accumulated enough samples.
+        """
+        if not has_required_landmarks(landmarks):
+            return None
+
+        hip_center = self._hip_center_px(landmarks, frame_shape)
+        self._hip_history.append(hip_center)
+
+        hip_velocity = self._compute_hip_velocity()
+        if hip_velocity is None:
+            return None
+
+        params = self._compute_parameters(landmarks, frame_shape, hip_velocity)
+        result = self._compute_risk(params)
+        self._result_history.append(result)
+        return self._smooth_result()
+
+    def _hip_center_px(
+        self,
+        landmarks: dict[str, tuple[float, float, float, float]],
+        frame_shape: tuple[int, int],
+    ) -> tuple[float, float]:
+        left = _to_px(landmarks["left_hip"], frame_shape)
+        right = _to_px(landmarks["right_hip"], frame_shape)
+        return ((left[0] + right[0]) / 2.0, (left[1] + right[1]) / 2.0)
+
+    def _compute_hip_velocity(self) -> Optional[tuple[float, float]]:
+        if len(self._hip_history) < 2:
+            return None
+        start = self._hip_history[0]
+        end = self._hip_history[-1]
+        return (end[0] - start[0], end[1] - start[1])
+
+    def _compute_parameters(
+        self,
+        landmarks: dict[str, tuple[float, float, float, float]],
+        frame_shape: tuple[int, int],
+        hip_velocity: tuple[float, float],
+    ) -> dict[str, float]:
+        side = front_leg_side(landmarks)
+        hip_deviation = compute_hip_trajectory_deviation(list(self._hip_history))
+        if hip_deviation is None:
+            hip_deviation = 0.0
+        return {
+            "hip_trajectory_deviation": hip_deviation,
+            "knee_flexion": compute_knee_flexion(landmarks, side, frame_shape),
+            "foot_alignment": compute_foot_alignment(
+                landmarks, side, frame_shape, hip_velocity
+            ),
+            "landing_pitch": compute_landing_pitch(landmarks, side, frame_shape),
+        }
+
+    def _compute_risk(self, params: dict[str, float]) -> RiskResult:
+        profile = self.profile
+        normalized: dict[str, float] = {}
+        for name, value in params.items():
+            curve = profile.curves[name]
+            if name == "landing_pitch":
+                normalized[name] = eval_piecewise_by_min(value, curve)
+            else:
+                normalized[name] = eval_piecewise_by_max(value, curve)
+
+        base_score = compute_base_score(normalized, profile.weights)
+        interaction_score = compute_interaction_score(normalized, profile.interactions)
+        total = compute_total_risk(base_score, interaction_score)
+
+        bands = profile.bands
+        if total <= bands["green_max"]:
+            status = "Optimal"
+        elif total <= bands["yellow_max"]:
+            status = "Caution"
+        else:
+            status = "High Risk"
+
+        alerts = [
+            {
+                "label": "Hip Control",
+                **risk_level_from_normalized(normalized["hip_trajectory_deviation"]),
+            },
+            {
+                "label": "Knee Overload",
+                **risk_level_from_normalized(normalized["knee_flexion"]),
+            },
+            {
+                "label": "Foot Alignment",
+                **risk_level_from_normalized(normalized["foot_alignment"]),
+            },
+            {
+                "label": "Kinetic Shock",
+                **risk_level_from_normalized(normalized["landing_pitch"]),
+            },
+        ]
+
+        return RiskResult(
+            total_risk=total,
+            base_score=base_score,
+            interaction_score=interaction_score,
+            normalized=normalized,
+            alerts=alerts,
+            status=status,
+            profile_label=profile.label,
+        )
+
+    def _smooth_result(self) -> RiskResult:
+        if len(self._result_history) == 1:
+            return self._result_history[0]
+
+        n = len(self._result_history)
+        total = sum(r.total_risk for r in self._result_history) / n
+        base = sum(r.base_score for r in self._result_history) / n
+        interaction = sum(r.interaction_score for r in self._result_history) / n
+        latest = self._result_history[-1]
+
+        return RiskResult(
+            total_risk=total,
+            base_score=base,
+            interaction_score=interaction,
+            normalized=latest.normalized,
+            alerts=latest.alerts,
+            status=latest.status,
+            profile_label=latest.profile_label,
+        )
