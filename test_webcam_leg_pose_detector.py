@@ -258,10 +258,9 @@ class TestMain(unittest.TestCase):
     @patch.object(detector_module.cv2, "destroyAllWindows")
     @patch.object(detector_module.cv2, "waitKey", return_value=ord("q"))
     @patch.object(detector_module.cv2, "imshow")
-    @patch.object(detector_module.cv2, "flip", side_effect=lambda f, _: f)
     @patch.object(detector_module.cv2, "VideoCapture")
     def test_main_uses_custom_camera_index(
-        self, mock_video_capture, mock_flip, mock_imshow, mock_waitKey, mock_destroy, mock_pose_cls
+        self, mock_video_capture, mock_imshow, mock_waitKey, mock_destroy, mock_pose_cls
     ):
         """main() uses a custom camera index passed as an argument."""
         fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -281,12 +280,11 @@ class TestMain(unittest.TestCase):
     @patch.object(detector_module.cv2, "destroyAllWindows")
     @patch.object(detector_module.cv2, "waitKey", return_value=ord("q"))
     @patch.object(detector_module.cv2, "imshow")
-    @patch.object(detector_module.cv2, "flip", side_effect=lambda f, _: f)
     @patch.object(detector_module.cv2, "VideoCapture")
     def test_main_successful_frame_loop(
-        self, mock_video_capture, mock_flip, mock_imshow, mock_waitKey, mock_destroy
+        self, mock_video_capture, mock_imshow, mock_waitKey, mock_destroy
     ):
-        """main() reads frames, flips them, detects pose, and displays the result."""
+        """main() reads frames, detects pose, and displays the result."""
         fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
 
         mock_cap = MagicMock()
@@ -312,7 +310,6 @@ class TestMain(unittest.TestCase):
                         exit_code = main()
 
         self.assertEqual(exit_code, 0)
-        mock_flip.assert_called_once_with(fake_frame, 1)
         mock_imshow.assert_called_once()
         mock_draw.assert_called_once()
         mock_cap.release.assert_called_once()
@@ -321,10 +318,9 @@ class TestMain(unittest.TestCase):
     @patch.object(detector_module.cv2, "destroyAllWindows")
     @patch.object(detector_module.cv2, "waitKey", return_value=ord("q"))
     @patch.object(detector_module.cv2, "imshow")
-    @patch.object(detector_module.cv2, "flip", side_effect=lambda f, _: f)
     @patch.object(detector_module.cv2, "VideoCapture")
     def test_main_debug_mode_prints_landmark_visibilities(
-        self, mock_video_capture, mock_flip, mock_imshow, mock_waitKey, mock_destroy
+        self, mock_video_capture, mock_imshow, mock_waitKey, mock_destroy
     ):
         """main(debug=True) prints detection status and landmark visibilities."""
         fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -357,12 +353,11 @@ class TestMain(unittest.TestCase):
     @patch.object(detector_module.cv2, "destroyAllWindows")
     @patch.object(detector_module.cv2, "waitKey", return_value=ord("q"))
     @patch.object(detector_module.cv2, "imshow")
-    @patch.object(detector_module.cv2, "flip", side_effect=lambda f, _: f)
     @patch.object(detector_module.cv2, "VideoCapture")
     def test_main_shows_original_frame_when_no_pose(
-        self, mock_video_capture, mock_flip, mock_imshow, mock_waitKey, mock_destroy, mock_pose_cls
+        self, mock_video_capture, mock_imshow, mock_waitKey, mock_destroy, mock_pose_cls
     ):
-        """main() shows the original flipped frame when no pose is detected."""
+        """main() shows the original frame when no pose is detected."""
         fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
 
         mock_cap = MagicMock()
@@ -377,7 +372,6 @@ class TestMain(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         mock_process.assert_called_once_with(fake_frame)
         mock_draw.assert_not_called()
-        mock_flip.assert_called_once_with(fake_frame, 1)
         mock_imshow.assert_called_once_with("Lower-Body Pose Detector", fake_frame)
         mock_cap.release.assert_called_once()
         mock_destroy.assert_called_once()
@@ -447,10 +441,9 @@ class TestRiskIntegration(unittest.TestCase):
     @patch.object(detector_module.cv2, "destroyAllWindows")
     @patch.object(detector_module.cv2, "waitKey", return_value=ord("q"))
     @patch.object(detector_module.cv2, "imshow")
-    @patch.object(detector_module.cv2, "flip", side_effect=lambda f, _: f)
     @patch.object(detector_module.cv2, "VideoCapture")
     def test_main_exercises_risk_path(
-        self, mock_video_capture, mock_flip, mock_imshow, mock_waitKey, mock_destroy
+        self, mock_video_capture, mock_imshow, mock_waitKey, mock_destroy
     ):
         """main() calls the risk model and overlay when landmarks are found."""
         fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -480,10 +473,9 @@ class TestRiskIntegration(unittest.TestCase):
     @patch.object(detector_module.cv2, "destroyAllWindows")
     @patch.object(detector_module.cv2, "waitKey", side_effect=[ord("p"), ord("q")])
     @patch.object(detector_module.cv2, "imshow")
-    @patch.object(detector_module.cv2, "flip", side_effect=lambda f, _: f)
     @patch.object(detector_module.cv2, "VideoCapture")
     def test_main_cycles_profile_on_p_key(
-        self, mock_video_capture, mock_flip, mock_imshow, mock_waitKey, mock_destroy
+        self, mock_video_capture, mock_imshow, mock_waitKey, mock_destroy
     ):
         """Pressing 'p' cycles the active risk profile."""
         fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)

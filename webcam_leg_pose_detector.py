@@ -209,7 +209,7 @@ def main(
 
     Pose detection runs on the original (unflipped) frame so ``left_*`` /
     ``right_*`` landmarks retain physical-body meaning. The annotated frame is
-    mirrored horizontally before display for a selfie-style preview.
+    displayed without mirroring.
 
     Args:
         camera_index: OpenCV video capture device index.
@@ -268,9 +268,7 @@ def main(
                     if debug:
                         print("No pose detected.")
 
-                # Mirror only for display.
-                display_frame = cv2.flip(frame, 1)
-                cv2.imshow("Lower-Body Pose Detector", display_frame)
+                cv2.imshow("Lower-Body Pose Detector", frame)
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord("q"):
                     break
