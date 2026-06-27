@@ -11,6 +11,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 import webcam_leg_pose_detector as detector_module
+from injury_risk import RiskModel
+from risk_overlay import RiskOverlay
 from webcam_leg_pose_detector import (
     LOWER_BODY_CONNECTIONS,
     LOWER_BODY_LANDMARKS,
@@ -435,6 +437,68 @@ class TestMain(unittest.TestCase):
         mock_imshow.assert_not_called()
         printed = " ".join(str(c) for c in mock_print.call_args_list)
         self.assertIn("Exceeded maximum frame read retries", printed)
+
+
+class TestRiskIntegration(unittest.TestCase):
+    """Tests for the live risk-model integration."""
+
+    @patch.object(detector_module.cv2, "destroyAllWindows")
+    @patch.object(detector_module.cv2, "waitKey", return_value=ord("q"))
+    @patch.object(detector_module.cv2, "imshow")
+    @patch.object(detector_module.cv2, "flip", side_effect=lambda f, _: f)
+    @patch.object(detector_module.cv2, "VideoCapture")
+    def test_main_exercises_risk_path(
+        self, mock_video_capture, mock_flip, mock_imshow, mock_waitKey, mock_destroy
+    ):
+        """main() calls the risk model and overlay when landmarks are found."""
+        fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        mock_cap = MagicMock()
+        mock_cap.isOpened.return_value = True
+        mock_cap.read.return_value = (True, fake_frame)
+        mock_video_capture.return_value = mock_cap
+
+        landmarks = _make_mock_landmarks()
+        mock_results = MagicMock()
+        mock_results.pose_landmarks = landmarks
+        mock_pose_instance = MagicMock()
+        mock_pose_instance.process.return_value = mock_results
+
+        with patch.object(
+            detector_module.mp.solutions.pose, "Pose", return_value=mock_pose_instance
+        ):
+            with patch.object(RiskModel, "update", return_value=None) as mock_update:
+                with patch.object(RiskOverlay, "draw") as mock_draw:
+                    exit_code = main()
+
+        self.assertEqual(exit_code, 0)
+        mock_update.assert_called_once()
+        mock_draw.assert_called_once()
+
+    @patch.object(detector_module.cv2, "destroyAllWindows")
+    @patch.object(detector_module.cv2, "waitKey", side_effect=[ord("p"), ord("q")])
+    @patch.object(detector_module.cv2, "imshow")
+    @patch.object(detector_module.cv2, "flip", side_effect=lambda f, _: f)
+    @patch.object(detector_module.cv2, "VideoCapture")
+    def test_main_cycles_profile_on_p_key(
+        self, mock_video_capture, mock_flip, mock_imshow, mock_waitKey, mock_destroy
+    ):
+        """Pressing 'p' cycles the active risk profile."""
+        fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        mock_cap = MagicMock()
+        mock_cap.isOpened.return_value = True
+        mock_cap.read.return_value = (True, fake_frame)
+        mock_video_capture.return_value = mock_cap
+
+        with patch.object(detector_module.mp.solutions.pose, "Pose"):
+            with patch.object(PoseDetector, "process", return_value=None):
+                with patch.object(RiskOverlay, "draw"):
+                    with patch.object(RiskModel, "cycle_profile") as mock_cycle:
+                        exit_code = main()
+
+        self.assertEqual(exit_code, 0)
+        mock_cycle.assert_called_once()
 
 
 if __name__ == "__main__":

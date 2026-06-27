@@ -34,6 +34,9 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - internal path may not exist in all builds
     NormalizedLandmarkList = Any
 
+from injury_risk import RiskModel  # isort: split
+from risk_overlay import RiskOverlay  # isort: split
+
 
 __all__ = [
     "LOWER_BODY_CONNECTIONS",
@@ -200,6 +203,7 @@ def main(
     config: Optional[PoseDetectorConfig] = None,
     *,
     debug: bool = False,
+    risk_profile: str = "balanced",
 ) -> int:
     """Open the webcam, run lower-body pose detection, and display the annotated feed.
 
@@ -212,6 +216,8 @@ def main(
         config: Optional PoseDetectorConfig to override detection defaults.
         debug: If True, print detection status and lower-body landmark
             visibilities each frame to help diagnose tracking problems.
+        risk_profile: Initial injury-risk profile
+            (``conservative``, ``balanced``, or ``aggressive``).
     """
     cap = cv2.VideoCapture(camera_index)
 
@@ -219,6 +225,9 @@ def main(
         print(f"Error: Could not open camera at index {camera_index}.")
         cap.release()
         return 1
+
+    risk_model = RiskModel(risk_profile)
+    risk_overlay = RiskOverlay()
 
     consecutive_frame_failures = 0
     try:
@@ -243,6 +252,9 @@ def main(
                 landmarks = detector.process(frame)
                 if landmarks is not None:
                     detector.draw_landmarks(frame, landmarks)
+                    lower_body = detector.get_lower_body_landmarks(landmarks)
+                    risk_result = risk_model.update(lower_body, frame.shape)
+                    risk_overlay.draw(frame, risk_result)
                     if debug:
                         print(
                             f"Detected {len(landmarks.landmark)} landmarks. "
@@ -251,14 +263,21 @@ def main(
                         for name, idx in LOWER_BODY_LANDMARKS.items():
                             lm = landmarks.landmark[idx]
                             print(f"  {name}: {lm.visibility:.2f}")
-                elif debug:
-                    print("No pose detected.")
+                else:
+                    risk_overlay.draw(frame, None)
+                    if debug:
+                        print("No pose detected.")
 
                 # Mirror only for display.
                 display_frame = cv2.flip(frame, 1)
                 cv2.imshow("Lower-Body Pose Detector", display_frame)
-                if cv2.waitKey(1) & 0xFF == ord("q"):
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord("q"):
                     break
+                if key == ord("p"):
+                    risk_model.cycle_profile()
+                    if debug:
+                        print(f"Switched to profile: {risk_model.profile.label}")
     finally:
         cap.release()
         cv2.destroyAllWindows()
