@@ -3,14 +3,20 @@
 import pytest
 
 from injury_risk import (
+    PROFILE_PRESETS,
+    REQUIRED_JOINTS,
     RiskProfile,
     RiskResult,
-    PROFILE_PRESETS,
     compute_base_score,
+    compute_foot_alignment,
     compute_interaction_score,
+    compute_knee_flexion,
+    compute_landing_pitch,
     compute_total_risk,
     eval_piecewise_by_max,
     eval_piecewise_by_min,
+    front_leg_side,
+    has_required_landmarks,
     risk_level_from_normalized,
 )
 
@@ -108,3 +114,59 @@ class TestCurveEvaluation:
         assert base == pytest.approx(expected_base)
         assert interaction == pytest.approx(expected_interaction)
         assert total == pytest.approx(min(expected_base + expected_interaction, 100.0))
+
+
+def _landmark(x, y, z=0.0, visibility=1.0):
+    return (x, y, z, visibility)
+
+
+class TestParameterExtraction:
+    def test_required_joints_set(self):
+        assert REQUIRED_JOINTS == {
+            "left_hip",
+            "right_hip",
+            "left_knee",
+            "right_knee",
+            "left_ankle",
+            "right_ankle",
+            "left_heel",
+            "right_heel",
+            "left_foot_index",
+            "right_foot_index",
+        }
+
+    def test_has_required_landmarks_false_when_low_visibility(self):
+        landmarks = {
+            "left_hip": _landmark(0.5, 0.5, visibility=0.2),
+        }
+        assert has_required_landmarks(landmarks) is False
+
+    def test_front_leg_side_picks_lower_ankle(self):
+        landmarks = {
+            "left_ankle": _landmark(0.4, 0.7),
+            "right_ankle": _landmark(0.6, 0.8),
+        }
+        assert front_leg_side(landmarks) == "right"
+
+    def test_knee_flexion_is_internal_angle(self):
+        # Straight leg: hip (0.5, 0.4), knee (0.5, 0.6), ankle (0.5, 0.8)
+        # All y values; internal angle ~180.
+        frame_shape = (480, 640)
+        landmarks = {
+            "left_hip": _landmark(0.5, 0.4),
+            "left_knee": _landmark(0.5, 0.6),
+            "left_ankle": _landmark(0.5, 0.8),
+        }
+        assert compute_knee_flexion(landmarks, "left", frame_shape) == pytest.approx(
+            180.0, abs=1.0
+        )
+
+    def test_landing_pitch_negative_when_heel_lower(self):
+        # Heel below toe in image -> negative pitch.
+        frame_shape = (480, 640)
+        landmarks = {
+            "left_heel": _landmark(0.5, 0.8),
+            "left_foot_index": _landmark(0.55, 0.75),
+        }
+        pitch = compute_landing_pitch(landmarks, "left", frame_shape)
+        assert pitch < 0
