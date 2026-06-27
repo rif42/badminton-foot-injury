@@ -159,3 +159,60 @@ PROFILE_PRESETS = {
         "bands": {"green_max": 34, "yellow_max": 69},
     },
 }
+
+
+def eval_piecewise_by_max(value: float, curve: list[dict[str, float]]) -> float:
+    """Return the first risk value whose `max` threshold is >= ``value``."""
+    for point in curve:
+        if value <= point["max"]:
+            return point["r"]
+    return curve[-1]["r"]
+
+
+def eval_piecewise_by_min(value: float, curve: list[dict[str, float]]) -> float:
+    """Return the first risk value whose `min` threshold is <= ``value``."""
+    for point in curve:
+        if value >= point["min"]:
+            return point["r"]
+    return curve[-1]["r"]
+
+
+def risk_level_from_normalized(r: float) -> dict[str, str]:
+    """Map a normalized risk value to a human label and CSS-style class."""
+    if r >= 0.7:
+        return {"txt": "High", "cls": "bad"}
+    if r >= 0.35:
+        return {"txt": "Moderate", "cls": "warn"}
+    return {"txt": "Low", "cls": "ok"}
+
+
+def compute_base_score(
+    normalized: dict[str, float], weights: dict[str, float]
+) -> float:
+    """Weighted sum of normalized parameter risks, scaled to 0-100."""
+    return 100.0 * sum(weights[name] * normalized[name] for name in weights)
+
+
+def compute_interaction_score(
+    normalized: dict[str, float], interactions: dict[str, float]
+) -> float:
+    """Add synergy bonuses for dangerous parameter combinations."""
+    return (
+        interactions["knee_x_hip"]
+        * normalized["knee_flexion"]
+        * normalized["hip_trajectory_deviation"]
+        + interactions["foot_x_pitch"]
+        * normalized["foot_alignment"]
+        * normalized["landing_pitch"]
+        + interactions["knee_x_pitch"]
+        * normalized["knee_flexion"]
+        * normalized["landing_pitch"]
+        + interactions["hip_x_foot"]
+        * normalized["hip_trajectory_deviation"]
+        * normalized["foot_alignment"]
+    )
+
+
+def compute_total_risk(base_score: float, interaction_score: float) -> float:
+    """Clamp total risk to the 0-100 range."""
+    return min(base_score + interaction_score, 100.0)
