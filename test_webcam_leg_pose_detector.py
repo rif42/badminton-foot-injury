@@ -307,7 +307,9 @@ class TestMain(unittest.TestCase):
             with patch.object(
                 PoseDetector, "draw_landmarks", side_effect=lambda f, lm: f
             ) as mock_draw:
-                exit_code = main()
+                with patch.object(RiskModel, "update", return_value=None):
+                    with patch.object(RiskOverlay, "draw"):
+                        exit_code = main()
 
         self.assertEqual(exit_code, 0)
         mock_flip.assert_called_once_with(fake_frame, 1)
