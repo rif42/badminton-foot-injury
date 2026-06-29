@@ -254,7 +254,11 @@ def main(
                     detector.draw_landmarks(frame, landmarks)
                     lower_body = detector.get_lower_body_landmarks(landmarks)
                     risk_result = risk_model.update(lower_body, frame.shape)
-                    risk_overlay.draw(frame, risk_result)
+                    risk_overlay.draw(
+                        frame,
+                        risk_result,
+                        profile_label=risk_model.profile.label,
+                    )
                     if debug:
                         print(
                             f"Detected {len(landmarks.landmark)} landmarks. "
@@ -264,7 +268,11 @@ def main(
                             lm = landmarks.landmark[idx]
                             print(f"  {name}: {lm.visibility:.2f}")
                 else:
-                    risk_overlay.draw(frame, None)
+                    risk_overlay.draw(
+                        frame,
+                        None,
+                        profile_label=risk_model.profile.label,
+                    )
                     if debug:
                         print("No pose detected.")
 

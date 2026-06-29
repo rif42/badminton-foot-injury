@@ -235,6 +235,16 @@ REQUIRED_JOINTS = {
 
 VISIBILITY_THRESHOLD = 0.5
 
+# Body-scale estimation uses the average hip-to-ankle distance (pixels).
+BODY_SCALE_JOINTS: Tuple[Tuple[str, str], ...] = (
+    ("left_hip", "left_ankle"),
+    ("right_hip", "right_ankle"),
+)
+
+# Idle gate: normalized hip movement below this fraction of body scale is
+# treated as no meaningful athletic movement.
+IDLE_MOVEMENT_THRESHOLD = 0.015
+
 
 def has_required_landmarks(
     landmarks: dict[str, tuple[float, float, float, float]]
@@ -344,6 +354,63 @@ def compute_hip_trajectory_deviation(
     return diff
 
 
+def compute_body_scale(
+    landmarks: dict[str, tuple[float, float, float, float]],
+    frame_shape: tuple[int, int],
+) -> Optional[float]:
+    """Estimate body scale as the average hip-to-ankle distance in pixels.
+
+    Falls back to whichever side is visible so that the helper is usable
+    even when one leg is partially out of frame.
+    """
+    lengths: list[float] = []
+    for hip_name, ankle_name in BODY_SCALE_JOINTS:
+        if hip_name not in landmarks or ankle_name not in landmarks:
+            continue
+        hip = _to_px(landmarks[hip_name], frame_shape)
+        ankle = _to_px(landmarks[ankle_name], frame_shape)
+        lengths.append(math.hypot(hip[0] - ankle[0], hip[1] - ankle[1]))
+    if not lengths:
+        return None
+    return sum(lengths) / len(lengths)
+
+
+def compute_normalized_hip_movement(
+    hip_history: list[tuple[float, float]],
+    body_scale: float,
+) -> Optional[float]:
+    """Hip displacement over the history window normalized by body scale.
+
+    Returns None when there is not enough history or the scale is invalid.
+    """
+    if len(hip_history) < 2 or body_scale <= 0:
+        return None
+    start = hip_history[0]
+    end = hip_history[-1]
+    displacement = math.hypot(end[0] - start[0], end[1] - start[1])
+    return displacement / body_scale
+
+
+def is_idle(
+    landmarks: dict[str, tuple[float, float, float, float]],
+    frame_shape: tuple[int, int],
+    hip_history: list[tuple[float, float]],
+    threshold: float = IDLE_MOVEMENT_THRESHOLD,
+) -> bool:
+    """Return True when the athlete is essentially still.
+
+    Movement is normalized by body scale so the gate is resolution and
+    distance invariant.
+    """
+    body_scale = compute_body_scale(landmarks, frame_shape)
+    if body_scale is None:
+        return False
+    movement = compute_normalized_hip_movement(hip_history, body_scale)
+    if movement is None:
+        return False
+    return movement < threshold
+
+
 class RiskModel:
     """Maintains pose history and produces smoothed injury-risk scores."""
 
@@ -359,6 +426,7 @@ class RiskModel:
         self._smoothing_window = smoothing_window
         self._hip_history: deque[tuple[float, float]] = deque(maxlen=hip_history_size)
         self._result_history: deque[RiskResult] = deque(maxlen=smoothing_window)
+        self._was_idle: bool = False
 
     def set_profile(self, profile_key: str) -> None:
         """Switch to a built-in profile."""
@@ -373,6 +441,29 @@ class RiskModel:
         next_idx = (idx + 1) % len(order)
         self.set_profile(order[next_idx])
 
+    def _idle_result(self) -> RiskResult:
+        """A first-class result emitted when the athlete is not moving."""
+        zero_norm = {name: 0.0 for name in self.profile.weights}
+        alerts = [
+            {"label": "Hip Control", "txt": "Low", "cls": "ok"},
+            {"label": "Knee Overload", "txt": "Low", "cls": "ok"},
+            {"label": "Foot Alignment", "txt": "Low", "cls": "ok"},
+            {"label": "Kinetic Shock", "txt": "Low", "cls": "ok"},
+        ]
+        return RiskResult(
+            total_risk=0.0,
+            base_score=0.0,
+            interaction_score=0.0,
+            normalized=zero_norm,
+            alerts=alerts,
+            status="Idle",
+            profile_label=self.profile.label,
+        )
+
+    def _reset_smoothing(self) -> None:
+        """Clear the smoothing window so state transitions do not mix values."""
+        self._result_history.clear()
+
     def update(
         self,
         landmarks: dict[str, tuple[float, float, float, float]],
@@ -381,13 +472,30 @@ class RiskModel:
         """Evaluate risk for the current frame.
 
         Returns ``None`` when required landmarks are missing or the hip
-        velocity history has not yet accumulated enough samples.
+        history has not yet accumulated enough samples.
         """
         if not has_required_landmarks(landmarks):
             return None
 
         hip_center = self._hip_center_px(landmarks, frame_shape)
         self._hip_history.append(hip_center)
+
+        if len(self._hip_history) < 2:
+            return None
+
+        currently_idle = is_idle(landmarks, frame_shape, list(self._hip_history))
+
+        if currently_idle:
+            if not self._was_idle:
+                self._reset_smoothing()
+            result = self._idle_result()
+            self._result_history.append(result)
+            self._was_idle = True
+            return self._smooth_result()
+
+        # Dynamic branch
+        if self._was_idle:
+            self._reset_smoothing()
 
         hip_velocity = self._compute_hip_velocity()
         if hip_velocity is None:
@@ -396,6 +504,7 @@ class RiskModel:
         params = self._compute_parameters(landmarks, frame_shape, hip_velocity)
         result = self._compute_risk(params)
         self._result_history.append(result)
+        self._was_idle = False
         return self._smooth_result()
 
     def _hip_center_px(

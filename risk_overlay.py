@@ -14,6 +14,7 @@ from injury_risk import RiskResult
 COLOR_OK: Tuple[int, int, int] = (0, 255, 0)
 COLOR_WARN: Tuple[int, int, int] = (0, 200, 255)
 COLOR_BAD: Tuple[int, int, int] = (0, 0, 255)
+COLOR_IDLE: Tuple[int, int, int] = (128, 128, 128)
 COLOR_TEXT: Tuple[int, int, int] = (255, 255, 255)
 COLOR_PANEL: Tuple[int, int, int] = (30, 30, 30)
 
@@ -29,8 +30,20 @@ class RiskOverlay:
         self,
         frame: np.ndarray,
         result: Optional[RiskResult],
+        profile_label: Optional[str] = None,
     ) -> np.ndarray:
-        """Mutates ``frame`` in place and returns it."""
+        """Mutates ``frame`` in place and returns it.
+
+        Args:
+            frame: OpenCV BGR image to annotate.
+            result: Risk evaluation result, or None when pose data is
+                insufficient to compute a score.
+            profile_label: Optional active profile label to render in the
+                top-right panel. When ``result`` is present, its
+                ``profile_label`` takes precedence.
+        """
+        label = result.profile_label if result is not None else profile_label
+
         if result is None:
             self._draw_panel(frame, 0, 0, 420, 70, COLOR_PANEL)
             self._draw_text(
@@ -40,6 +53,8 @@ class RiskOverlay:
                 35,
                 COLOR_TEXT,
             )
+            if label is not None:
+                self._draw_profile_panel(frame, label)
             return frame
 
         color = self._status_color(result.status)
@@ -53,9 +68,9 @@ class RiskOverlay:
             (0, 0, 0),
         )
         self._draw_text(frame, f"Risk: {result.total_risk:.1f}", 15, 80, (0, 0, 0))
-        self._draw_text(
-            frame, f"Profile: {result.profile_label}", 200, 40, (0, 0, 0), scale=0.5
-        )
+
+        # Profile indicator panel (top-right)
+        self._draw_profile_panel(frame, label)
 
         # Per-parameter alerts
         y_start = 130
@@ -70,11 +85,28 @@ class RiskOverlay:
 
         return frame
 
+    def _draw_profile_panel(self, frame: np.ndarray, label: str) -> None:
+        """Draw the active profile label in a dedicated top-right panel."""
+        frame_h, frame_w = frame.shape[:2]
+        panel_w, panel_h = 250, 45
+        panel_x = frame_w - panel_w
+        panel_y = 0
+        self._draw_panel(frame, panel_x, panel_y, panel_w, panel_h, COLOR_PANEL)
+        self._draw_text(
+            frame,
+            f"Profile: {label}",
+            panel_x + 15,
+            panel_y + 30,
+            COLOR_TEXT,
+            scale=0.65,
+        )
+
     def _status_color(self, status: str) -> Tuple[int, int, int]:
         return {
             "Optimal": COLOR_OK,
             "Caution": COLOR_WARN,
             "High Risk": COLOR_BAD,
+            "Idle": COLOR_IDLE,
         }.get(status, COLOR_PANEL)
 
     def _status_prefix(self, status: str) -> str:
@@ -82,6 +114,7 @@ class RiskOverlay:
             "Optimal": "OK",
             "Caution": "!",
             "High Risk": "X",
+            "Idle": "·",
         }.get(status, "?")
 
     def _level_color(self, cls: str) -> Tuple[int, int, int]:

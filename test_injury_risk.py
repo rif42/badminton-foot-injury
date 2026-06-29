@@ -9,15 +9,18 @@ from injury_risk import (
     RiskProfile,
     RiskResult,
     compute_base_score,
+    compute_body_scale,
     compute_foot_alignment,
     compute_interaction_score,
     compute_knee_flexion,
     compute_landing_pitch,
+    compute_normalized_hip_movement,
     compute_total_risk,
     eval_piecewise_by_max,
     eval_piecewise_by_min,
     front_leg_side,
     has_required_landmarks,
+    is_idle,
     risk_level_from_normalized,
 )
 
@@ -173,13 +176,13 @@ class TestParameterExtraction:
         assert pitch < 0
 
 
-def _make_safe_landmarks():
+def _make_safe_landmarks(hip_shift=(0.0, 0.0)):
     def lm(x, y, v=1.0):
         return (x, y, 0.0, v)
 
     return {
-        "left_hip": lm(0.45, 0.35),
-        "right_hip": lm(0.55, 0.35),
+        "left_hip": lm(0.45 + hip_shift[0], 0.35 + hip_shift[1]),
+        "right_hip": lm(0.55 + hip_shift[0], 0.35 + hip_shift[1]),
         "left_knee": lm(0.45, 0.55),
         "right_knee": lm(0.55, 0.55),
         "left_ankle": lm(0.45, 0.8),
@@ -191,6 +194,65 @@ def _make_safe_landmarks():
     }
 
 
+class TestBodyScaleAndIdleGate:
+    def test_compute_body_scale_average_leg_length(self):
+        frame_shape = (480, 640)
+        landmarks = {
+            "left_hip": _landmark(0.5, 0.3),
+            "left_ankle": _landmark(0.5, 0.7),
+            "right_hip": _landmark(0.5, 0.3),
+            "right_ankle": _landmark(0.5, 0.7),
+        }
+        # Each leg is 0.4 * 480 = 192 px; average is the same.
+        scale = compute_body_scale(landmarks, frame_shape)
+        assert scale == pytest.approx(192.0)
+
+    def test_compute_body_scale_returns_none_when_missing(self):
+        frame_shape = (480, 640)
+        assert compute_body_scale({}, frame_shape) is None
+
+    def test_compute_body_scale_uses_visible_side(self):
+        frame_shape = (480, 640)
+        landmarks = {
+            "left_hip": _landmark(0.5, 0.3),
+            "left_ankle": _landmark(0.5, 0.7),
+        }
+        assert compute_body_scale(landmarks, frame_shape) == pytest.approx(192.0)
+
+    def test_compute_normalized_hip_movement(self):
+        history = [(100.0, 100.0), (103.0, 104.0)]  # 5 px displacement
+        body_scale = 100.0
+        movement = compute_normalized_hip_movement(history, body_scale)
+        assert movement == pytest.approx(0.05)
+
+    def test_compute_normalized_hip_movement_returns_none_for_short_history(self):
+        assert compute_normalized_hip_movement([(100.0, 100.0)], 100.0) is None
+
+    def test_is_idle_true_when_movement_below_threshold(self):
+        frame_shape = (480, 640)
+        # Body scale ~192 px; movement ~1.4 px -> ~0.007 < 0.015.
+        landmarks = {
+            "left_hip": _landmark(0.5, 0.3),
+            "left_ankle": _landmark(0.5, 0.7),
+            "right_hip": _landmark(0.5, 0.3),
+            "right_ankle": _landmark(0.5, 0.7),
+        }
+        history = [(320.0, 144.0), (321.0, 145.0)]
+        assert is_idle(landmarks, frame_shape, history) is True
+
+    def test_is_idle_false_when_movement_above_threshold(self):
+        frame_shape = (480, 640)
+        # Body scale ~192 px; movement 20 px -> ~0.104 > 0.015.
+        landmarks = {
+            "left_hip": _landmark(0.5, 0.3),
+            "left_ankle": _landmark(0.5, 0.7),
+            "right_hip": _landmark(0.5, 0.3),
+            "right_ankle": _landmark(0.5, 0.7),
+        }
+        history = [(320.0, 144.0), (340.0, 144.0)]
+        assert is_idle(landmarks, frame_shape, history) is False
+
+
 class TestRiskModel:
     def test_update_returns_none_when_landmarks_missing(self):
         model = RiskModel()
@@ -200,8 +262,8 @@ class TestRiskModel:
         model = RiskModel()
         frame_shape = (480, 640)
         result = None
-        for _ in range(5):
-            result = model.update(_make_safe_landmarks(), frame_shape)
+        for i in range(5):
+            result = model.update(_make_safe_landmarks(hip_shift=(i * 0.02, 0)), frame_shape)
         assert isinstance(result, RiskResult)
         assert 0.0 <= result.total_risk <= 100.0
         assert result.status in {"Optimal", "Caution", "High Risk"}
@@ -222,9 +284,61 @@ class TestRiskModel:
         frame_shape = (480, 640)
         first = None
         for i in range(5):
-            lm = _make_safe_landmarks()
+            lm = _make_safe_landmarks(hip_shift=(i * 0.02, 0))
             # Move ankles down each frame to create changing geometry.
             lm["left_ankle"] = (lm["left_ankle"][0], 0.75 + i * 0.01, 0.0, 1.0)
             lm["right_ankle"] = (lm["right_ankle"][0], 0.75 + i * 0.01, 0.0, 1.0)
             first = model.update(lm, frame_shape)
         assert first is not None
+
+    def test_update_returns_idle_when_hip_is_stationary(self):
+        model = RiskModel()
+        frame_shape = (480, 640)
+        for _ in range(5):
+            result = model.update(_make_safe_landmarks(), frame_shape)
+        assert result is not None
+        assert result.status == "Idle"
+        assert result.total_risk == pytest.approx(0.0)
+        assert result.base_score == pytest.approx(0.0)
+        assert result.interaction_score == pytest.approx(0.0)
+        assert all(v == 0.0 for v in result.normalized.values())
+        assert all(alert["txt"] == "Low" for alert in result.alerts)
+
+    def test_idle_to_dynamic_resets_smoothing(self):
+        model = RiskModel(smoothing_window=5)
+        frame_shape = (480, 640)
+
+        # Run idle for several frames.
+        for _ in range(5):
+            idle_result = model.update(_make_safe_landmarks(), frame_shape)
+        assert idle_result is not None
+        assert idle_result.status == "Idle"
+        assert idle_result.total_risk == pytest.approx(0.0)
+
+        # Transition to dynamic. Hip shift of 0.02/frame -> ~12.8 px/frame.
+        result = None
+        for i in range(1, 6):
+            result = model.update(
+                _make_safe_landmarks(hip_shift=(i * 0.02, 0)), frame_shape
+            )
+        assert result is not None
+        assert result.status != "Idle"
+        # Smoothing should not average in the previous idle zeros.
+        assert result.total_risk > 0.0
+
+    def test_dynamic_to_idle_resets_smoothing(self):
+        model = RiskModel(smoothing_window=5)
+        frame_shape = (480, 640)
+
+        # Run dynamic for several frames.
+        for i in range(5):
+            model.update(_make_safe_landmarks(hip_shift=(i * 0.02, 0)), frame_shape)
+
+        # Transition to idle; flush the hip-history window so the idle gate fires.
+        idle_result = None
+        for _ in range(5):
+            idle_result = model.update(_make_safe_landmarks(), frame_shape)
+        assert idle_result is not None
+        assert idle_result.status == "Idle"
+        assert idle_result.total_risk == pytest.approx(0.0)
+

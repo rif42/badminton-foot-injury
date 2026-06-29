@@ -306,12 +306,15 @@ class TestMain(unittest.TestCase):
                 PoseDetector, "draw_landmarks", side_effect=lambda f, lm: f
             ) as mock_draw:
                 with patch.object(RiskModel, "update", return_value=None):
-                    with patch.object(RiskOverlay, "draw"):
+                    with patch.object(RiskOverlay, "draw") as mock_overlay_draw:
                         exit_code = main()
 
         self.assertEqual(exit_code, 0)
         mock_imshow.assert_called_once()
         mock_draw.assert_called_once()
+        mock_overlay_draw.assert_called_once_with(
+            fake_frame, None, profile_label="Balanced"
+        )
         mock_cap.release.assert_called_once()
         mock_destroy.assert_called_once()
 
@@ -468,7 +471,9 @@ class TestRiskIntegration(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         mock_update.assert_called_once()
-        mock_draw.assert_called_once()
+        mock_draw.assert_called_once_with(
+            fake_frame, None, profile_label="Balanced"
+        )
 
     @patch.object(detector_module.cv2, "destroyAllWindows")
     @patch.object(detector_module.cv2, "waitKey", side_effect=[ord("p"), ord("q")])
@@ -487,12 +492,15 @@ class TestRiskIntegration(unittest.TestCase):
 
         with patch.object(detector_module.mp.solutions.pose, "Pose"):
             with patch.object(PoseDetector, "process", return_value=None):
-                with patch.object(RiskOverlay, "draw"):
+                with patch.object(RiskOverlay, "draw") as mock_draw:
                     with patch.object(RiskModel, "cycle_profile") as mock_cycle:
                         exit_code = main()
 
         self.assertEqual(exit_code, 0)
         mock_cycle.assert_called_once()
+        self.assertEqual(mock_draw.call_count, 2)
+        for call in mock_draw.call_args_list:
+            self.assertEqual(call.kwargs.get("profile_label"), "Balanced")
 
 
 if __name__ == "__main__":
