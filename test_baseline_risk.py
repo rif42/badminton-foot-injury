@@ -4,7 +4,15 @@ import math
 
 import pytest
 
-from baseline_risk import angle_at, clamp, distance, knee_flexion_angle, knee_stiffness_risk, midpoint
+from baseline_risk import (
+    angle_at,
+    ankle_foot_alignment_risk,
+    clamp,
+    distance,
+    knee_flexion_angle,
+    knee_stiffness_risk,
+    midpoint,
+)
 
 
 def test_clamp_inside_range():
@@ -128,3 +136,22 @@ def test_knee_stiffness_risk_custom_bounds_below_min():
 def test_knee_stiffness_risk_equal_bounds_triggers_guard():
     with pytest.raises(AssertionError):
         knee_stiffness_risk(120.0, min_safe=120.0, max_safe=120.0)
+
+
+def test_ankle_foot_alignment_perfect():
+    knee = (0.0, 0.8, 0.5)
+    ankle = (0.0, 0.1, 0.5)
+    heel = (0.0, 0.0, 0.3)
+    foot_index = (0.0, 0.0, 0.7)
+    leg_length = 1.4
+    assert ankle_foot_alignment_risk(knee, ankle, heel, foot_index, leg_length) == pytest.approx(0.0, abs=1e-3)
+
+
+def test_ankle_foot_alignment_toe_in():
+    knee = (0.0, 0.8, 0.5)
+    ankle = (0.0, 0.1, 0.5)
+    heel = (0.0, 0.0, 0.3)
+    foot_index = (0.2, 0.0, 0.3)
+    leg_length = 1.4
+    risk = ankle_foot_alignment_risk(knee, ankle, heel, foot_index, leg_length)
+    assert risk > 0.2

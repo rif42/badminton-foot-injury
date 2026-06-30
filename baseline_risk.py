@@ -136,3 +136,23 @@ def knee_stiffness_risk(knee_angle: float, min_safe: float = 145.0, max_safe: fl
     """
     assert max_safe > min_safe, "max_safe must be greater than min_safe"
     return clamp((knee_angle - min_safe) / (max_safe - min_safe), 0.0, 1.0)
+
+
+def ankle_foot_alignment_risk(
+    knee: Point,
+    ankle: Point,
+    heel: Point,
+    foot_index: Point,
+    leg_length: float,
+) -> float:
+    """Return 0-1 risk from knee-over-foot deviation and foot progression angle."""
+    foot_center = midpoint(heel, foot_index)
+    knee_over_foot_deviation = abs(knee[0] - foot_center[0]) / max(leg_length, 1e-6)
+    knee_dev_score = clamp(knee_over_foot_deviation / 0.22, 0.0, 1.0)
+
+    dx = foot_index[0] - heel[0]
+    dz = foot_index[2] - heel[2]
+    foot_angle = abs(math.degrees(math.atan2(dx, dz)))
+    angle_score = clamp(foot_angle / 45.0, 0.0, 1.0)
+
+    return 0.70 * knee_dev_score + 0.30 * angle_score
