@@ -9,6 +9,7 @@ from baseline_risk import (
     ankle_foot_alignment_risk,
     clamp,
     distance,
+    hip_displacement_proxy,
     knee_flexion_angle,
     knee_stiffness_risk,
     midpoint,
@@ -223,3 +224,46 @@ def test_ankle_foot_alignment_rejects_non_positive_leg_length(bad_length):
     foot_index = (0.0, 0.0, 0.7)
     with pytest.raises(AssertionError):
         ankle_foot_alignment_risk(knee, ankle, heel, foot_index, bad_length)
+
+
+def test_hip_displacement_low():
+    left_hip = (-0.1, 1.0, 0.0)
+    right_hip = (0.1, 1.0, 0.0)
+    heel = (-0.1, 0.0, 0.0)
+    foot_index = (0.1, 0.0, 0.0)
+    leg_length = 1.0
+    assert hip_displacement_proxy(left_hip, right_hip, heel, foot_index, leg_length) == pytest.approx(0.0, abs=1e-3)
+
+
+def test_hip_displacement_high():
+    left_hip = (-0.1, 1.0, -0.5)
+    right_hip = (0.1, 1.0, -0.5)
+    heel = (-0.1, 0.0, 0.5)
+    foot_index = (0.1, 0.0, 0.5)
+    leg_length = 1.0
+    proxy = hip_displacement_proxy(left_hip, right_hip, heel, foot_index, leg_length)
+    assert proxy > 0.5
+
+
+@pytest.mark.parametrize("idx", [0, 1, 2, 3])
+def test_hip_displacement_rejects_non_3d_points(idx):
+    points = [
+        (-0.1, 1.0, 0.0),
+        (0.1, 1.0, 0.0),
+        (-0.1, 0.0, 0.0),
+        (0.1, 0.0, 0.0),
+    ]
+    invalid = (0.0, 0.0)
+    args = [points[i] if i != idx else invalid for i in range(4)] + [1.0]
+    with pytest.raises(AssertionError):
+        hip_displacement_proxy(*args)
+
+
+@pytest.mark.parametrize("bad_length", [0.0, -1.0])
+def test_hip_displacement_rejects_non_positive_leg_length(bad_length):
+    left_hip = (-0.1, 1.0, 0.0)
+    right_hip = (0.1, 1.0, 0.0)
+    heel = (-0.1, 0.0, 0.0)
+    foot_index = (0.1, 0.0, 0.0)
+    with pytest.raises(AssertionError):
+        hip_displacement_proxy(left_hip, right_hip, heel, foot_index, bad_length)

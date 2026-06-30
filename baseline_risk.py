@@ -22,6 +22,9 @@ _ANKLE_FOOT_FOOT_ANGLE_THRESHOLD = 45.0
 _ANKLE_FOOT_KNEE_DEVIATION_WEIGHT = 0.70
 _ANKLE_FOOT_FOOT_ANGLE_WEIGHT = 0.30
 
+# Minimum denominator for division by leg length to guard against pathological values.
+_LEG_LENGTH_EPSILON = 1e-6
+
 
 def clamp(value: float, low: float, high: float) -> float:
     """Clamp ``value`` to the inclusive range ``[low, high]``.
@@ -213,3 +216,48 @@ def ankle_foot_alignment_risk(
         _ANKLE_FOOT_KNEE_DEVIATION_WEIGHT * knee_dev_score
         + _ANKLE_FOOT_FOOT_ANGLE_WEIGHT * angle_score
     )
+
+
+def hip_displacement_proxy(
+    left_hip: Point,
+    right_hip: Point,
+    heel: Point,
+    foot_index: Point,
+    leg_length: float,
+) -> float:
+    """Return a 0-1 proxy for pelvis displacement from the support foot base.
+
+    The proxy measures the horizontal distance between the pelvis center
+    (midpoint of the two hips) and the foot base (midpoint of heel and forefoot)
+    in the transverse plane (x-z), normalized by ``leg_length``. A value of ``0.0``
+    indicates the pelvis is centered over the foot, while ``1.0`` indicates the
+    pelvis is displaced by at least one full leg length.
+
+    Args:
+        left_hip: A 3-D point ``(x, y, z)`` representing the left hip landmark.
+        right_hip: A 3-D point ``(x, y, z)`` representing the right hip landmark.
+        heel: A 3-D point ``(x, y, z)`` representing the heel landmark.
+        foot_index: A 3-D point ``(x, y, z)`` representing the forefoot /
+            metatarsal landmark.
+        leg_length: Positive leg length, in the same units as the point
+            coordinates.
+
+    Returns:
+        A normalized displacement proxy in ``[0.0, 1.0]``.
+
+    Raises:
+        AssertionError: If any landmark is not a 3-tuple or if ``leg_length``
+            is not positive.
+    """
+    assert len(left_hip) == 3, "left_hip must be a 3-D coordinate"
+    assert len(right_hip) == 3, "right_hip must be a 3-D coordinate"
+    assert len(heel) == 3, "heel must be a 3-D coordinate"
+    assert len(foot_index) == 3, "foot_index must be a 3-D coordinate"
+    assert leg_length > 0, "leg_length must be positive"
+
+    hip_center = midpoint(left_hip, right_hip)
+    foot_center = midpoint(heel, foot_index)
+    horizontal = math.sqrt(
+        (hip_center[0] - foot_center[0]) ** 2 + (hip_center[2] - foot_center[2]) ** 2
+    )
+    return clamp(horizontal / max(leg_length, _LEG_LENGTH_EPSILON), 0.0, 1.0)
