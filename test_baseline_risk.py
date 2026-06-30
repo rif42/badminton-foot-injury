@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from baseline_risk import angle_at, clamp, distance, midpoint
+from baseline_risk import angle_at, clamp, distance, knee_flexion_angle, knee_stiffness_risk, midpoint
 
 
 def test_clamp_inside_range():
@@ -83,3 +83,26 @@ def test_distance_rejects_non_3d_point():
 def test_midpoint_rejects_non_3d_point():
     with pytest.raises(AssertionError):
         midpoint((0.0, 0.0, 0.0, 0.0), (1.0, 0.0, 0.0))
+
+
+def test_knee_flexion_right_angle():
+    hip = (0.0, 1.0, 0.0)
+    knee = (0.0, 0.0, 0.0)
+    ankle = (1.0, 0.0, 0.0)
+    assert math.isclose(knee_flexion_angle(hip, knee, ankle), 90.0, abs_tol=1e-6)
+
+
+def test_knee_stiffness_risk_low():
+    assert knee_stiffness_risk(120.0) == 0.0
+
+
+def test_knee_stiffness_risk_at_threshold():
+    assert knee_stiffness_risk(145.0) == 0.0
+
+
+def test_knee_stiffness_risk_high():
+    assert knee_stiffness_risk(180.0) == 1.0
+
+
+def test_knee_stiffness_risk_mid():
+    assert knee_stiffness_risk(160.0) == pytest.approx(0.429, abs=1e-3)

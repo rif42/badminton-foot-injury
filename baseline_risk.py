@@ -87,3 +87,13 @@ def angle_at(a: Point, b: Point, c: Point) -> float:
         return 0.0
     cos = clamp(sum(ba_i * bc_i for ba_i, bc_i in zip(ba, bc)) / denom, -1.0, 1.0)
     return math.degrees(math.acos(cos))
+
+
+def knee_flexion_angle(hip: Point, knee: Point, ankle: Point) -> float:
+    """Return the knee flexion angle in degrees."""
+    return angle_at(hip, knee, ankle)
+
+
+def knee_stiffness_risk(knee_angle: float, min_safe: float = 145.0, max_safe: float = 180.0) -> float:
+    """Return 0–1 risk that the knee is too straight during loading."""
+    return clamp((knee_angle - min_safe) / (max_safe - min_safe), 0.0, 1.0)
