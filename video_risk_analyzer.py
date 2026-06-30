@@ -67,6 +67,19 @@ _STATUS_RISKY = "risky"
 _CORE_RISK_CAUTION_THRESHOLD = 0.35
 _CORE_RISK_RISKY_THRESHOLD = 0.65
 
+_DEFAULT_MODEL_COMPLEXITY = 0
+_DEFAULT_MIN_DETECTION_CONFIDENCE = 0.5
+_DEFAULT_MIN_TRACKING_CONFIDENCE = 0.5
+
+_MOTION_GATE_WINDOW_SECONDS = 0.3
+
+_COLOR_ACCEPTABLE = (0, 255, 0)
+_COLOR_CAUTION = (0, 255, 255)
+_COLOR_RISKY = (0, 0, 255)
+
+_LABEL_ORIGIN = (10, 30)
+_LABEL_FONT_SCALE = 0.7
+_LABEL_FONT_THICKNESS = 2
 
 DEFAULT_OUTPUT_CSV = "risk_report.csv"
 
@@ -84,9 +97,9 @@ def _create_pose_detector() -> PoseDetector:
     mp_pose = mp.solutions.pose
     return mp_pose.Pose(
         static_image_mode=False,
-        model_complexity=0,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
+        model_complexity=_DEFAULT_MODEL_COMPLEXITY,
+        min_detection_confidence=_DEFAULT_MIN_DETECTION_CONFIDENCE,
+        min_tracking_confidence=_DEFAULT_MIN_TRACKING_CONFIDENCE,
     )
 
 
@@ -219,7 +232,7 @@ def analyze_video(
 
     pose = pose_detector if pose_detector is not None else _create_pose_detector()
 
-    gate = MotionGate(window_seconds=0.3, fps=fps)
+    gate = MotionGate(window_seconds=_MOTION_GATE_WINDOW_SECONDS, fps=fps)
     results: list[dict[str, Any]] = []
     frame_idx = 0
 
@@ -268,20 +281,20 @@ def analyze_video(
             if writer is not None or show_preview:
                 display = frame.copy()
                 if row["status"] == _STATUS_ACCEPTABLE:
-                    color = (0, 255, 0)
+                    color = _COLOR_ACCEPTABLE
                 elif row["status"] == _STATUS_CAUTION:
-                    color = (0, 255, 255)
+                    color = _COLOR_CAUTION
                 else:
-                    color = (0, 0, 255)
+                    color = _COLOR_RISKY
                 label = f"{row['status'].upper()} {row['core_risk']:.2f}"
                 cv2.putText(
                     display,
                     label,
-                    (10, 30),
+                    _LABEL_ORIGIN,
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
+                    _LABEL_FONT_SCALE,
                     color,
-                    2,
+                    _LABEL_FONT_THICKNESS,
                 )
                 if writer is not None:
                     writer.write(display)
