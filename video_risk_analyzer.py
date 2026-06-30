@@ -11,10 +11,9 @@ import argparse
 import csv
 import os
 import sys
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 import cv2
-import numpy as np
 
 # Suppress verbose MediaPipe / TensorFlow Lite runtime logging.
 # These must be set before importing mediapipe to take effect.
@@ -25,10 +24,27 @@ import absl.logging  # isort: split
 
 absl.logging.set_verbosity(absl.logging.ERROR)
 
-import mediapipe as mp  # isort: split
+import mediapipe as mp  # noqa: E402
 
-from baseline_risk import LowerBodyPose, Point, core_risk_score
-from motion_gate import MotionGate
+from baseline_risk import LowerBodyPose, Point, core_risk_score  # noqa: E402
+from motion_gate import MotionGate  # noqa: E402
+
+
+@runtime_checkable
+class PoseDetector(Protocol):
+    """Minimal protocol for a pose detector compatible with MediaPipe Pose.
+
+    Callers may inject any object that provides ``process`` and ``close`` with
+    these signatures, which keeps tests free of the MediaPipe import.
+    """
+
+    def process(self, image: Any) -> Any:
+        """Process an RGB image and return a result with ``pose_landmarks``."""
+        ...
+
+    def close(self) -> None:
+        """Release detector resources."""
+        ...
 
 
 LOWER_BODY_INDICES: dict[str, int] = {
@@ -55,7 +71,7 @@ _CORE_RISK_RISKY_THRESHOLD = 0.65
 DEFAULT_OUTPUT_CSV = "risk_report.csv"
 
 
-def _create_pose_detector() -> Any:
+def _create_pose_detector() -> PoseDetector:
     """Create and return a default MediaPipe Pose detector.
 
     This helper is separated from ``analyze_video`` so that tests and other
@@ -112,7 +128,7 @@ def _extract_pose(landmarks: Any, image_shape: tuple[int, ...]) -> LowerBodyPose
             for name, idx in LOWER_BODY_INDICES.items()
         }
         return LowerBodyPose(**kwargs)
-    except (IndexError, AttributeError):
+    except (IndexError, KeyError, AttributeError):
         return None
 
 
@@ -164,7 +180,7 @@ def analyze_video(
     output_csv: str,
     output_video: str | None,
     show_preview: bool = False,
-    pose_detector: Any = None,
+    pose_detector: PoseDetector | None = None,
 ) -> None:
     """Analyze a video and write a per-frame risk CSV report.
 
@@ -175,13 +191,14 @@ def analyze_video(
             written. If ``None``, no video is produced.
         show_preview: If ``True``, display a live preview window. Press ``q`` to
             quit early.
-        pose_detector: Optional pose detector to use. The object must provide
-            ``process(rgb_array)`` and ``close()`` methods compatible with the
-            MediaPipe Pose API. If ``None``, a default MediaPipe Pose detector
-            is created via ``_create_pose_detector()``.
+        pose_detector: Optional pose detector to use. The object must satisfy
+            the ``PoseDetector`` protocol (``process`` / ``close``). If
+            ``None``, a default MediaPipe Pose detector is created via
+            ``_create_pose_detector()``.
 
     Raises:
-        RuntimeError: If the input video cannot be opened.
+        RuntimeError: If the input video or output video writer cannot be
+            opened.
     """
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
@@ -195,6 +212,10 @@ def analyze_video(
     if output_video:
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         writer = cv2.VideoWriter(output_video, fourcc, fps, (width, height))
+        if writer is not None and not writer.isOpened():
+            writer.release()
+            cap.release()
+            raise RuntimeError(f"Could not open video writer: {output_video}")
 
     pose = pose_detector if pose_detector is not None else _create_pose_detector()
 
@@ -202,79 +223,81 @@ def analyze_video(
     results: list[dict[str, Any]] = []
     frame_idx = 0
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        mp_result = pose.process(rgb)
-        pose_obj = _extract_pose(mp_result.pose_landmarks, frame.shape)
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_result = pose.process(rgb)
+            pose_obj = _extract_pose(mp_result.pose_landmarks, frame.shape)
 
-        row: dict[str, Any] = {
-            "frame": frame_idx,
-            "time_sec": round(frame_idx / fps, 3),
-            "is_moving": False,
-            "knee_stiffness_risk": 0.0,
-            "ankle_foot_alignment_risk": 0.0,
-            "hip_displacement_proxy": 0.0,
-            "landing_asymmetry_score": 0.0,
-            "core_risk": 0.0,
-            "status": _STATUS_ACCEPTABLE,
-        }
+            row: dict[str, Any] = {
+                "frame": frame_idx,
+                "time_sec": round(frame_idx / fps, 3),
+                "is_moving": False,
+                "knee_stiffness_risk": 0.0,
+                "ankle_foot_alignment_risk": 0.0,
+                "hip_displacement_proxy": 0.0,
+                "landing_asymmetry_score": 0.0,
+                "core_risk": 0.0,
+                "status": _STATUS_ACCEPTABLE,
+            }
 
-        if pose_obj is not None:
-            hip_center = (
-                (pose_obj.left_hip[0] + pose_obj.right_hip[0]) / 2.0,
-                (pose_obj.left_hip[1] + pose_obj.right_hip[1]) / 2.0,
-                (pose_obj.left_hip[2] + pose_obj.right_hip[2]) / 2.0,
-            )
-            leg_length = (
-                (pose_obj.left_hip[1] - pose_obj.left_ankle[1])
-                + (pose_obj.right_hip[1] - pose_obj.right_ankle[1])
-            ) / 2.0
-            state = gate.update(hip_center, leg_length)
-            row["is_moving"] = state == "moving"
+            if pose_obj is not None:
+                hip_center = (
+                    (pose_obj.left_hip[0] + pose_obj.right_hip[0]) / 2.0,
+                    (pose_obj.left_hip[1] + pose_obj.right_hip[1]) / 2.0,
+                    (pose_obj.left_hip[2] + pose_obj.right_hip[2]) / 2.0,
+                )
+                leg_length = (
+                    abs(pose_obj.left_hip[1] - pose_obj.left_ankle[1])
+                    + abs(pose_obj.right_hip[1] - pose_obj.right_ankle[1])
+                ) / 2.0
+                state = gate.update(hip_center, leg_length)
+                row["is_moving"] = state == "moving"
 
-            if state == "moving":
-                score = core_risk_score(pose_obj)
-                row.update(score)
-                row["status"] = _status(score["core_risk"])
+                if state == "moving":
+                    score = core_risk_score(pose_obj)
+                    row.update(score)
+                    row["status"] = _status(score["core_risk"])
 
-        results.append(row)
+            results.append(row)
 
-        if writer is not None or show_preview:
-            display = frame.copy()
-            if row["status"] == _STATUS_ACCEPTABLE:
-                color = (0, 255, 0)
-            elif row["status"] == _STATUS_CAUTION:
-                color = (0, 255, 255)
-            else:
-                color = (0, 0, 255)
-            label = f"{row['status'].upper()} {row['core_risk']:.2f}"
-            cv2.putText(
-                display,
-                label,
-                (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                color,
-                2,
-            )
-            if writer is not None:
-                writer.write(display)
-            if show_preview:
-                cv2.imshow("Risk Analyzer", display)
-                if cv2.waitKey(1) & 0xFF == ord("q"):
-                    break
+            if writer is not None or show_preview:
+                display = frame.copy()
+                if row["status"] == _STATUS_ACCEPTABLE:
+                    color = (0, 255, 0)
+                elif row["status"] == _STATUS_CAUTION:
+                    color = (0, 255, 255)
+                else:
+                    color = (0, 0, 255)
+                label = f"{row['status'].upper()} {row['core_risk']:.2f}"
+                cv2.putText(
+                    display,
+                    label,
+                    (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    color,
+                    2,
+                )
+                if writer is not None:
+                    writer.write(display)
+                if show_preview:
+                    cv2.imshow("Risk Analyzer", display)
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
+                        break
 
-        frame_idx += 1
-
-    cap.release()
-    if writer is not None:
-        writer.release()
-    pose.close()
-    cv2.destroyAllWindows()
+            frame_idx += 1
+    finally:
+        cap.release()
+        if writer is not None:
+            writer.release()
+        pose.close()
+        if show_preview:
+            cv2.destroyAllWindows()
 
     rows = build_csv_rows(results)
     if not rows:
