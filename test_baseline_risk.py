@@ -242,7 +242,7 @@ def test_hip_displacement_high():
     foot_index = (0.1, 0.0, 0.5)
     leg_length = 1.0
     proxy = hip_displacement_proxy(left_hip, right_hip, heel, foot_index, leg_length)
-    assert proxy == pytest.approx(1.0, abs=1e-3)
+    assert proxy == 1.0
 
 
 def test_hip_displacement_mid():
