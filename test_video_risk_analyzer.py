@@ -33,8 +33,7 @@ def _make_landmarks(coords: dict[int, tuple[float, float, float]]) -> MagicMock:
     """Return a mock landmarks container with the given index -> coordinate map."""
     landmarks = MagicMock()
     landmarks.landmark = {
-        idx: _make_landmark(x, y, z)
-        for idx, (x, y, z) in coords.items()
+        idx: _make_landmark(x, y, z) for idx, (x, y, z) in coords.items()
     }
     return landmarks
 
@@ -43,16 +42,16 @@ def _symmetric_pose_landmarks() -> dict[int, tuple[float, float, float]]:
     """Return a plausible symmetric lower-body pose in normalized coordinates."""
     return {
         # Left side
-        23: (0.45, 0.30, 0.0),   # left_hip
-        25: (0.45, 0.50, 0.0),   # left_knee
-        27: (0.45, 0.75, 0.0),   # left_ankle
-        29: (0.43, 0.82, 0.0),   # left_heel
+        23: (0.45, 0.30, 0.0),  # left_hip
+        25: (0.45, 0.50, 0.0),  # left_knee
+        27: (0.45, 0.75, 0.0),  # left_ankle
+        29: (0.43, 0.82, 0.0),  # left_heel
         31: (0.47, 0.82, 0.05),  # left_foot_index
         # Right side
-        24: (0.55, 0.30, 0.0),   # right_hip
-        26: (0.55, 0.50, 0.0),   # right_knee
-        28: (0.55, 0.75, 0.0),   # right_ankle
-        30: (0.53, 0.82, 0.0),   # right_heel
+        24: (0.55, 0.30, 0.0),  # right_hip
+        26: (0.55, 0.50, 0.0),  # right_knee
+        28: (0.55, 0.75, 0.0),  # right_ankle
+        30: (0.53, 0.82, 0.0),  # right_heel
         32: (0.57, 0.82, 0.05),  # right_foot_index
     }
 
@@ -162,9 +161,7 @@ def test_analyze_video_real_pose_path_writes_risk_csv(tmp_path):
         return result
 
     mock_pose = MagicMock()
-    mock_pose.process.side_effect = [
-        _make_moving_landmarks(i) for i in range(15)
-    ]
+    mock_pose.process.side_effect = [_make_moving_landmarks(i) for i in range(15)]
     mock_pose.close = MagicMock()
 
     with patch("cv2.VideoCapture") as mock_cap:
@@ -207,7 +204,9 @@ def test_analyze_video_raises_when_input_video_cannot_be_opened(tmp_path):
         mock_cap.return_value = mock_cap_instance
 
         with pytest.raises(RuntimeError, match="Could not open video"):
-            analyze_video(str(tmp_path / "missing.mp4"), str(tmp_path / "out.csv"), None)
+            analyze_video(
+                str(tmp_path / "missing.mp4"), str(tmp_path / "out.csv"), None
+            )
 
 
 def test_analyze_video_raises_when_video_writer_cannot_be_opened(tmp_path):
@@ -217,8 +216,7 @@ def test_analyze_video_raises_when_video_writer_cannot_be_opened(tmp_path):
     mock_pose.process.return_value.pose_landmarks = None
     mock_pose.close = MagicMock()
 
-    with patch("cv2.VideoCapture") as mock_cap, \
-         patch("cv2.VideoWriter") as mock_writer:
+    with patch("cv2.VideoCapture") as mock_cap, patch("cv2.VideoWriter") as mock_writer:
         mock_cap_instance = MagicMock()
         mock_cap_instance.read.side_effect = [(True, fake_frame), (False, None)]
         mock_cap_instance.get.side_effect = lambda key: (
@@ -246,7 +244,10 @@ def test_main_prints_expected_output(capsys):
     mock_pose.process.return_value.pose_landmarks = None
     mock_pose.close = MagicMock()
 
-    with patch("cv2.VideoCapture") as mock_cap:
+    with (
+        patch("cv2.VideoCapture") as mock_cap,
+        patch("video_risk_analyzer._create_pose_detector", return_value=mock_pose),
+    ):
         mock_cap_instance = MagicMock()
         mock_cap_instance.read.side_effect = [(True, fake_frame), (False, None)]
         mock_cap_instance.get.side_effect = lambda key: (
@@ -256,7 +257,7 @@ def test_main_prints_expected_output(capsys):
 
         rc = main(
             [
-                str("fake.mp4"),
+                "fake.mp4",
                 "--output-csv",
                 "report.csv",
             ]
@@ -265,3 +266,27 @@ def test_main_prints_expected_output(capsys):
     assert rc == 0
     captured = capsys.readouterr()
     assert "Wrote CSV report to report.csv" in captured.out
+
+
+def test_main_on_synthetic_video(tmp_path):
+    video_path = tmp_path / "test.mp4"
+    output_csv = tmp_path / "out.csv"
+
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(str(video_path), fourcc, 30.0, (640, 480))
+    for _ in range(30):
+        writer.write(np.zeros((480, 640, 3), dtype=np.uint8))
+    writer.release()
+
+    mock_pose = MagicMock()
+    mock_pose.process.return_value.pose_landmarks = None
+    mock_pose.close = MagicMock()
+
+    with patch("video_risk_analyzer._create_pose_detector", return_value=mock_pose):
+        main([str(video_path), "--output-csv", str(output_csv)])
+
+    assert output_csv.exists()
+    with open(output_csv) as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+    assert len(rows) == 30
