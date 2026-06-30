@@ -1,0 +1,309 @@
+"""Offline video risk analyzer for badminton lower-body injury risk.
+
+This module reads a video file, runs MediaPipe Pose on each frame, extracts
+lower-body landmarks, and writes a per-frame CSV report. Optionally it can also
+produce an annotated output video and/or show a live preview window.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import os
+import sys
+from typing import Any
+
+import cv2
+import numpy as np
+
+# Suppress verbose MediaPipe / TensorFlow Lite runtime logging.
+# These must be set before importing mediapipe to take effect.
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+os.environ.setdefault("GLOG_minloglevel", "2")
+
+import absl.logging  # isort: split
+
+absl.logging.set_verbosity(absl.logging.ERROR)
+
+import mediapipe as mp  # isort: split
+
+from baseline_risk import LowerBodyPose, Point, core_risk_score
+from motion_gate import MotionGate
+
+
+LOWER_BODY_INDICES: dict[str, int] = {
+    "left_hip": 23,
+    "right_hip": 24,
+    "left_knee": 25,
+    "right_knee": 26,
+    "left_ankle": 27,
+    "right_ankle": 28,
+    "left_heel": 29,
+    "right_heel": 30,
+    "left_foot_index": 31,
+    "right_foot_index": 32,
+}
+
+_STATUS_ACCEPTABLE = "acceptable"
+_STATUS_CAUTION = "caution"
+_STATUS_RISKY = "risky"
+
+_CORE_RISK_CAUTION_THRESHOLD = 0.35
+_CORE_RISK_RISKY_THRESHOLD = 0.65
+
+
+DEFAULT_OUTPUT_CSV = "risk_report.csv"
+
+
+def _landmark_to_point(landmarks: Any, index: int, image_shape: tuple[int, ...]) -> Point:
+    """Convert a normalized MediaPipe landmark to an image-space ``Point``.
+
+    Args:
+        landmarks: A MediaPipe ``NormalizedLandmarkList``.
+        index: The landmark index to convert.
+        image_shape: The frame shape as returned by ``numpy.ndarray.shape``.
+
+    Returns:
+        A 3-D point ``(x, y, z)`` in pixel coordinates.
+    """
+    lm = landmarks.landmark[index]
+    return (
+        lm.x * image_shape[1],
+        lm.y * image_shape[0],
+        lm.z * image_shape[1],
+    )
+
+
+def _extract_pose(landmarks: Any, image_shape: tuple[int, ...]) -> LowerBodyPose | None:
+    """Build a ``LowerBodyPose`` from MediaPipe landmarks if all are present.
+
+    Args:
+        landmarks: A MediaPipe ``NormalizedLandmarkList``, or ``None``.
+        image_shape: The frame shape as returned by ``numpy.ndarray.shape``.
+
+    Returns:
+        A ``LowerBodyPose`` in pixel coordinates, or ``None`` if landmarks are
+        missing or incomplete.
+    """
+    if landmarks is None:
+        return None
+    try:
+        kwargs = {
+            name: _landmark_to_point(landmarks, idx, image_shape)
+            for name, idx in LOWER_BODY_INDICES.items()
+        }
+        return LowerBodyPose(**kwargs)
+    except (IndexError, AttributeError):
+        return None
+
+
+def _status(core_risk: float) -> str:
+    """Map a core risk score to a categorical status label.
+
+    Args:
+        core_risk: Core risk score in ``[0.0, 1.0]``.
+
+    Returns:
+        ``"acceptable"``, ``"caution"``, or ``"risky"``.
+    """
+    if core_risk < _CORE_RISK_CAUTION_THRESHOLD:
+        return _STATUS_ACCEPTABLE
+    if core_risk < _CORE_RISK_RISKY_THRESHOLD:
+        return _STATUS_CAUTION
+    return _STATUS_RISKY
+
+
+def build_csv_rows(results: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Convert analysis result dictionaries to CSV-ready string rows.
+
+    Args:
+        results: List of per-frame result dictionaries.
+
+    Returns:
+        List of dictionaries with string values and a fixed set of keys.
+        Returns an empty list if ``results`` is empty.
+    """
+    fieldnames = [
+        "frame",
+        "time_sec",
+        "is_moving",
+        "knee_stiffness_risk",
+        "ankle_foot_alignment_risk",
+        "hip_displacement_proxy",
+        "landing_asymmetry_score",
+        "core_risk",
+        "status",
+    ]
+    return [
+        {key: str(row.get(key, "")) for key in fieldnames}
+        for row in results
+    ]
+
+
+def analyze_video(
+    input_path: str,
+    output_csv: str,
+    output_video: str | None,
+    show_preview: bool = False,
+) -> None:
+    """Analyze a video and write a per-frame risk CSV report.
+
+    Args:
+        input_path: Path to the input video file.
+        output_csv: Path where the CSV report will be written.
+        output_video: Optional path where an annotated output video will be
+            written. If ``None``, no video is produced.
+        show_preview: If ``True``, display a live preview window. Press ``q`` to
+            quit early.
+
+    Raises:
+        RuntimeError: If the input video cannot be opened.
+    """
+    cap = cv2.VideoCapture(input_path)
+    if not cap.isOpened():
+        raise RuntimeError(f"Could not open video: {input_path}")
+
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    writer: cv2.VideoWriter | None = None
+    if output_video:
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(output_video, fourcc, fps, (width, height))
+
+    mp_pose = mp.solutions.pose
+    pose = mp_pose.Pose(
+        static_image_mode=False,
+        model_complexity=0,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5,
+    )
+
+    gate = MotionGate(window_seconds=0.3, fps=fps)
+    results: list[dict[str, Any]] = []
+    frame_idx = 0
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_result = pose.process(rgb)
+        pose_obj = _extract_pose(mp_result.pose_landmarks, frame.shape)
+
+        row: dict[str, Any] = {
+            "frame": frame_idx,
+            "time_sec": round(frame_idx / fps, 3),
+            "is_moving": False,
+            "knee_stiffness_risk": 0.0,
+            "ankle_foot_alignment_risk": 0.0,
+            "hip_displacement_proxy": 0.0,
+            "landing_asymmetry_score": 0.0,
+            "core_risk": 0.0,
+            "status": _STATUS_ACCEPTABLE,
+        }
+
+        if pose_obj is not None:
+            hip_center = (
+                (pose_obj.left_hip[0] + pose_obj.right_hip[0]) / 2.0,
+                (pose_obj.left_hip[1] + pose_obj.right_hip[1]) / 2.0,
+                (pose_obj.left_hip[2] + pose_obj.right_hip[2]) / 2.0,
+            )
+            leg_length = (
+                (pose_obj.left_hip[1] - pose_obj.left_ankle[1])
+                + (pose_obj.right_hip[1] - pose_obj.right_ankle[1])
+            ) / 2.0
+            state = gate.update(hip_center, leg_length)
+            row["is_moving"] = state == "moving"
+
+            if state == "moving":
+                score = core_risk_score(pose_obj)
+                row.update(score)
+                row["status"] = _status(score["core_risk"])
+
+        results.append(row)
+
+        if writer is not None or show_preview:
+            display = frame.copy()
+            if row["status"] == _STATUS_ACCEPTABLE:
+                color = (0, 255, 0)
+            elif row["status"] == _STATUS_CAUTION:
+                color = (0, 255, 255)
+            else:
+                color = (0, 0, 255)
+            label = f"{row['status'].upper()} {row['core_risk']:.2f}"
+            cv2.putText(
+                display,
+                label,
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                color,
+                2,
+            )
+            if writer is not None:
+                writer.write(display)
+            if show_preview:
+                cv2.imshow("Risk Analyzer", display)
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
+
+        frame_idx += 1
+
+    cap.release()
+    if writer is not None:
+        writer.release()
+    pose.close()
+    cv2.destroyAllWindows()
+
+    rows = build_csv_rows(results)
+    if not rows:
+        return
+
+    with open(output_csv, "w", newline="") as f:
+        writer_csv = csv.DictWriter(f, fieldnames=rows[0].keys())
+        writer_csv.writeheader()
+        writer_csv.writerows(rows)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point for the offline video risk analyzer.
+
+    Args:
+        argv: Optional argument list. If ``None``, ``sys.argv`` is used.
+
+    Returns:
+        Process exit code.
+    """
+    parser = argparse.ArgumentParser(
+        description="Offline badminton lower-body risk analyzer."
+    )
+    parser.add_argument("input_video", help="Path to input video.")
+    parser.add_argument(
+        "--output-csv",
+        default=DEFAULT_OUTPUT_CSV,
+        help="Path to output CSV.",
+    )
+    parser.add_argument(
+        "--output-video",
+        default=None,
+        help="Path to optional annotated output video.",
+    )
+    parser.add_argument(
+        "--show-preview",
+        action="store_true",
+        help="Show live preview window.",
+    )
+    args = parser.parse_args(argv)
+
+    analyze_video(args.input_video, args.output_csv, args.output_video, args.show_preview)
+    print(f"Wrote CSV report to {args.output_csv}")
+    if args.output_video:
+        print(f"Wrote annotated video to {args.output_video}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
