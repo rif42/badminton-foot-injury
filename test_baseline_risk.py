@@ -148,10 +148,78 @@ def test_ankle_foot_alignment_perfect():
 
 
 def test_ankle_foot_alignment_toe_in():
+    # 45° toe-in with the knee centered over the foot -> risk ≈ 0.30.
+    knee = (0.1, 0.8, 0.5)
+    ankle = (0.1, 0.1, 0.5)
+    heel = (0.0, 0.0, 0.3)
+    foot_index = (0.2, 0.0, 0.5)
+    leg_length = 1.4
+    risk = ankle_foot_alignment_risk(knee, ankle, heel, foot_index, leg_length)
+    assert risk == pytest.approx(0.30, abs=1e-3)
+
+
+def test_ankle_foot_alignment_toe_in_with_knee_deviation():
+    # 90° toe-in plus lateral knee deviation -> combined risk ≈ 0.527.
     knee = (0.0, 0.8, 0.5)
     ankle = (0.0, 0.1, 0.5)
     heel = (0.0, 0.0, 0.3)
     foot_index = (0.2, 0.0, 0.3)
     leg_length = 1.4
     risk = ankle_foot_alignment_risk(knee, ankle, heel, foot_index, leg_length)
-    assert risk > 0.2
+    assert risk == pytest.approx(0.5273, abs=1e-3)
+
+
+def test_ankle_foot_alignment_knee_deviation_at_threshold():
+    # Foot pointing straight; knee deviation is exactly 22% of leg length.
+    knee = (0.22, 0.8, 0.5)
+    ankle = (0.0, 0.1, 0.5)
+    heel = (0.0, 0.0, 0.3)
+    foot_index = (0.0, 0.0, 0.7)
+    leg_length = 1.0
+    risk = ankle_foot_alignment_risk(knee, ankle, heel, foot_index, leg_length)
+    assert risk == pytest.approx(0.70, abs=1e-3)
+
+
+def test_ankle_foot_alignment_foot_angle_45():
+    # Knee centered over foot; foot turned 45°.
+    knee = (0.5, 0.8, 0.5)
+    ankle = (0.5, 0.1, 0.5)
+    heel = (0.0, 0.0, 0.0)
+    foot_index = (1.0, 0.0, 1.0)
+    leg_length = 1.0
+    risk = ankle_foot_alignment_risk(knee, ankle, heel, foot_index, leg_length)
+    assert risk == pytest.approx(0.30, abs=1e-3)
+
+
+def test_ankle_foot_alignment_maximum_risk():
+    knee = (0.5, 0.8, 0.5)
+    ankle = (0.0, 0.1, 0.5)
+    heel = (0.0, 0.0, 0.3)
+    foot_index = (0.2, 0.0, 0.3)
+    leg_length = 1.0
+    risk = ankle_foot_alignment_risk(knee, ankle, heel, foot_index, leg_length)
+    assert risk == pytest.approx(1.0, abs=1e-3)
+
+
+@pytest.mark.parametrize("idx", [0, 1, 2, 3])
+def test_ankle_foot_alignment_rejects_non_3d_points(idx):
+    points = [
+        (0.0, 0.8, 0.5),
+        (0.0, 0.1, 0.5),
+        (0.0, 0.0, 0.3),
+        (0.0, 0.0, 0.7),
+    ]
+    invalid = (0.0, 0.0)
+    args = [points[i] if i != idx else invalid for i in range(4)] + [1.4]
+    with pytest.raises(AssertionError):
+        ankle_foot_alignment_risk(*args)
+
+
+@pytest.mark.parametrize("bad_length", [0.0, -1.0])
+def test_ankle_foot_alignment_rejects_non_positive_leg_length(bad_length):
+    knee = (0.0, 0.8, 0.5)
+    ankle = (0.0, 0.1, 0.5)
+    heel = (0.0, 0.0, 0.3)
+    foot_index = (0.0, 0.0, 0.7)
+    with pytest.raises(AssertionError):
+        ankle_foot_alignment_risk(knee, ankle, heel, foot_index, bad_length)

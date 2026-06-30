@@ -12,6 +12,16 @@ from typing import cast
 
 Point = tuple[float, float, float]
 
+# Thresholds and weights for ankle-foot alignment risk.
+# Knee-over-foot deviation is expressed as a fraction of leg length; a deviation
+# equal to 22 % of leg length maps to the maximum knee-deviation score.
+_ANKLE_FOOT_KNEE_DEVIATION_THRESHOLD = 0.22
+# Foot progression (toe-in/toe-out) angle in degrees; 45° maps to the max angle score.
+_ANKLE_FOOT_FOOT_ANGLE_THRESHOLD = 45.0
+# Relative contribution of knee deviation vs. foot progression angle.
+_ANKLE_FOOT_KNEE_DEVIATION_WEIGHT = 0.70
+_ANKLE_FOOT_FOOT_ANGLE_WEIGHT = 0.30
+
 
 def clamp(value: float, low: float, high: float) -> float:
     """Clamp ``value`` to the inclusive range ``[low, high]``.
@@ -145,14 +155,61 @@ def ankle_foot_alignment_risk(
     foot_index: Point,
     leg_length: float,
 ) -> float:
-    """Return 0-1 risk from knee-over-foot deviation and foot progression angle."""
+    """Return normalized ankle-foot alignment risk in ``[0.0, 1.0]``.
+
+    Risk combines two cues:
+
+    1. **Knee-over-foot deviation** — the absolute medial-lateral (x-axis)
+       distance between the knee and the center of the foot, expressed as a
+       fraction of ``leg_length``.
+    2. **Foot progression angle** — the absolute angle of the foot vector
+       (``foot_index - heel``) relative to the anterior-posterior (z-axis),
+       representing toe-in or toe-out.
+
+    The x-axis is assumed to be the medial-lateral axis, the y-axis is the
+    vertical axis, and the z-axis is the anterior-posterior / foot-progression
+    axis. Angles are in degrees.
+
+    Args:
+        knee: A 3-D point ``(x, y, z)`` representing the knee landmark.
+        ankle: A 3-D point ``(x, y, z)`` representing the ankle landmark.
+        heel: A 3-D point ``(x, y, z)`` representing the heel landmark.
+        foot_index: A 3-D point ``(x, y, z)`` representing the forefoot /
+            metatarsal landmark.
+        leg_length: Positive leg length, in the same units as the point
+            coordinates.
+
+    Returns:
+        A normalized risk value in ``[0.0, 1.0]``.
+
+    Raises:
+        AssertionError: If any landmark is not a 3-tuple or if ``leg_length``
+            is not positive.
+    """
+    assert len(knee) == 3, "knee must be a 3-D coordinate"
+    assert len(ankle) == 3, "ankle must be a 3-D coordinate"
+    assert len(heel) == 3, "heel must be a 3-D coordinate"
+    assert len(foot_index) == 3, "foot_index must be a 3-D coordinate"
+    assert leg_length > 0, "leg_length must be positive"
+
     foot_center = midpoint(heel, foot_index)
-    knee_over_foot_deviation = abs(knee[0] - foot_center[0]) / max(leg_length, 1e-6)
-    knee_dev_score = clamp(knee_over_foot_deviation / 0.22, 0.0, 1.0)
+    knee_over_foot_deviation = abs(knee[0] - foot_center[0]) / leg_length
+    knee_dev_score = clamp(
+        knee_over_foot_deviation / _ANKLE_FOOT_KNEE_DEVIATION_THRESHOLD,
+        0.0,
+        1.0,
+    )
 
     dx = foot_index[0] - heel[0]
     dz = foot_index[2] - heel[2]
     foot_angle = abs(math.degrees(math.atan2(dx, dz)))
-    angle_score = clamp(foot_angle / 45.0, 0.0, 1.0)
+    angle_score = clamp(
+        foot_angle / _ANKLE_FOOT_FOOT_ANGLE_THRESHOLD,
+        0.0,
+        1.0,
+    )
 
-    return 0.70 * knee_dev_score + 0.30 * angle_score
+    return (
+        _ANKLE_FOOT_KNEE_DEVIATION_WEIGHT * knee_dev_score
+        + _ANKLE_FOOT_FOOT_ANGLE_WEIGHT * angle_score
+    )
