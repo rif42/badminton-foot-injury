@@ -26,6 +26,20 @@ _ANKLE_FOOT_FOOT_ANGLE_WEIGHT = 0.30
 # maps to the maximum proxy value.
 _HIP_DISPLACEMENT_THRESHOLD = 1.0
 
+# Thresholds and weights for landing/lunge asymmetry risk.
+# Knee-angle difference in degrees; 60° maps to the maximum asymmetry score.
+_LANDING_KNEE_ANGLE_THRESHOLD = 60.0
+# Hip-drop score is the absolute height difference normalized by this fraction
+# of pelvis width; 80 % maps to the maximum hip-drop score.
+_LANDING_HIP_HEIGHT_RELATIVE_THRESHOLD = 0.8
+# Ankle-height score is the absolute height difference normalized by this fraction
+# of average leg length; 20 % maps to the maximum ankle-height score.
+_LANDING_ANKLE_HEIGHT_RELATIVE_THRESHOLD = 0.2
+# Relative contribution of knee angle, hip height, and ankle height asymmetries.
+_LANDING_KNEE_ASYMMETRY_WEIGHT = 0.35
+_LANDING_HIP_HEIGHT_WEIGHT = 0.25
+_LANDING_ANKLE_HEIGHT_WEIGHT = 0.20
+
 
 def clamp(value: float, low: float, high: float) -> float:
     """Clamp ``value`` to the inclusive range ``[low, high]``.
@@ -262,3 +276,81 @@ def hip_displacement_proxy(
         (hip_center[0] - foot_center[0]) ** 2 + (hip_center[2] - foot_center[2]) ** 2
     )
     return clamp(horizontal / leg_length / _HIP_DISPLACEMENT_THRESHOLD, 0.0, 1.0)
+
+
+def landing_asymmetry_score(
+    left_hip: Point,
+    right_hip: Point,
+    left_knee: Point,
+    right_knee: Point,
+    left_ankle: Point,
+    right_ankle: Point,
+) -> float:
+    """Return a 0-1 score for left-right imbalance during landing or a lunge.
+
+    The score combines three cues:
+
+    1. **Knee flexion asymmetry** — the absolute difference between left and
+       right knee flexion angles, expressed as a fraction of
+       ``_LANDING_KNEE_ANGLE_THRESHOLD`` degrees.
+    2. **Pelvis obliquity** — the absolute vertical difference between the left
+       and right hips, expressed as a fraction of
+       ``_LANDING_HIP_HEIGHT_RELATIVE_THRESHOLD`` times the pelvis width.
+    3. **Ankle height asymmetry** — the absolute vertical difference between the
+       left and right ankles, expressed as a fraction of
+       ``_LANDING_ANKLE_HEIGHT_RELATIVE_THRESHOLD`` times the average leg length.
+
+    Args:
+        left_hip: A 3-D point ``(x, y, z)`` representing the left hip landmark.
+        right_hip: A 3-D point ``(x, y, z)`` representing the right hip landmark.
+        left_knee: A 3-D point ``(x, y, z)`` representing the left knee landmark.
+        right_knee: A 3-D point ``(x, y, z)`` representing the right knee landmark.
+        left_ankle: A 3-D point ``(x, y, z)`` representing the left ankle landmark.
+        right_ankle: A 3-D point ``(x, y, z)`` representing the right ankle landmark.
+
+    Returns:
+        A normalized asymmetry score in ``[0.0, 1.0]``.
+
+    Raises:
+        AssertionError: If any landmark is not a 3-tuple.
+    """
+    assert len(left_hip) == 3, "left_hip must be a 3-D coordinate"
+    assert len(right_hip) == 3, "right_hip must be a 3-D coordinate"
+    assert len(left_knee) == 3, "left_knee must be a 3-D coordinate"
+    assert len(right_knee) == 3, "right_knee must be a 3-D coordinate"
+    assert len(left_ankle) == 3, "left_ankle must be a 3-D coordinate"
+    assert len(right_ankle) == 3, "right_ankle must be a 3-D coordinate"
+
+    left_knee_angle = knee_flexion_angle(left_hip, left_knee, left_ankle)
+    right_knee_angle = knee_flexion_angle(right_hip, right_knee, right_ankle)
+    knee_asym = clamp(
+        abs(left_knee_angle - right_knee_angle) / _LANDING_KNEE_ANGLE_THRESHOLD,
+        0.0,
+        1.0,
+    )
+
+    pelvis_width = distance(left_hip, right_hip)
+    hip_height_score = clamp(
+        abs(left_hip[1] - right_hip[1]) / max(pelvis_width * _LANDING_HIP_HEIGHT_RELATIVE_THRESHOLD, 1e-6),
+        0.0,
+        1.0,
+    )
+
+    avg_leg_length = (
+        distance(left_hip, left_knee)
+        + distance(left_knee, left_ankle)
+        + distance(right_hip, right_knee)
+        + distance(right_knee, right_ankle)
+    ) / 2.0
+    ankle_height_score = clamp(
+        abs(left_ankle[1] - right_ankle[1])
+        / max(avg_leg_length * _LANDING_ANKLE_HEIGHT_RELATIVE_THRESHOLD, 1e-6),
+        0.0,
+        1.0,
+    )
+
+    return (
+        _LANDING_KNEE_ASYMMETRY_WEIGHT * knee_asym
+        + _LANDING_HIP_HEIGHT_WEIGHT * hip_height_score
+        + _LANDING_ANKLE_HEIGHT_WEIGHT * ankle_height_score
+    )

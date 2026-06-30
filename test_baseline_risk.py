@@ -12,6 +12,7 @@ from baseline_risk import (
     hip_displacement_proxy,
     knee_flexion_angle,
     knee_stiffness_risk,
+    landing_asymmetry_score,
     midpoint,
 )
 
@@ -287,3 +288,48 @@ def test_hip_displacement_rejects_non_positive_leg_length(bad_length):
     foot_index = (0.1, 0.0, 0.0)
     with pytest.raises(AssertionError):
         hip_displacement_proxy(left_hip, right_hip, heel, foot_index, bad_length)
+
+
+def test_landing_asymmetry_symmetric():
+    left_hip = (-0.1, 1.0, 0.0)
+    right_hip = (0.1, 1.0, 0.0)
+    left_knee = (-0.1, 0.5, 0.0)
+    right_knee = (0.1, 0.5, 0.0)
+    left_ankle = (-0.1, 0.0, 0.0)
+    right_ankle = (0.1, 0.0, 0.0)
+    assert landing_asymmetry_score(
+        left_hip, right_hip,
+        left_knee, right_knee,
+        left_ankle, right_ankle,
+    ) == pytest.approx(0.0, abs=1e-3)
+
+
+def test_landing_asymmetry_hip_drop():
+    left_hip = (-0.1, 0.8, 0.0)
+    right_hip = (0.1, 1.0, 0.0)
+    left_knee = (-0.1, 0.5, 0.0)
+    right_knee = (0.1, 0.5, 0.0)
+    left_ankle = (-0.1, 0.0, 0.0)
+    right_ankle = (0.1, 0.0, 0.0)
+    score = landing_asymmetry_score(
+        left_hip, right_hip,
+        left_knee, right_knee,
+        left_ankle, right_ankle,
+    )
+    assert score > 0.1
+
+
+@pytest.mark.parametrize("idx", [0, 1, 2, 3, 4, 5])
+def test_landing_asymmetry_rejects_non_3d_points(idx):
+    points = [
+        (-0.1, 1.0, 0.0),
+        (0.1, 1.0, 0.0),
+        (-0.1, 0.5, 0.0),
+        (0.1, 0.5, 0.0),
+        (-0.1, 0.0, 0.0),
+        (0.1, 0.0, 0.0),
+    ]
+    invalid = (0.0, 0.0)
+    args = [points[i] if i != idx else invalid for i in range(6)]
+    with pytest.raises(AssertionError):
+        landing_asymmetry_score(*args)
