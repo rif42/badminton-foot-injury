@@ -8,6 +8,7 @@ inputs; ``distance`` and ``midpoint`` validate this at runtime.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import cast
 
 Point = tuple[float, float, float]
@@ -361,3 +362,64 @@ def landing_asymmetry_score(
         + _LANDING_HIP_HEIGHT_WEIGHT * hip_height_score
         + _LANDING_ANKLE_HEIGHT_WEIGHT * ankle_height_score
     )
+
+
+@dataclass(frozen=True)
+class LowerBodyPose:
+    left_hip: Point
+    right_hip: Point
+    left_knee: Point
+    right_knee: Point
+    left_ankle: Point
+    right_ankle: Point
+    left_heel: Point
+    right_heel: Point
+    left_foot_index: Point
+    right_foot_index: Point
+
+
+def _leg_length(hip: Point, knee: Point, ankle: Point) -> float:
+    return distance(hip, knee) + distance(knee, ankle)
+
+
+def core_risk_score(pose: LowerBodyPose) -> dict:
+    """Return core risk score and component breakdown for a pose."""
+    left_leg = _leg_length(pose.left_hip, pose.left_knee, pose.left_ankle)
+    right_leg = _leg_length(pose.right_hip, pose.right_knee, pose.right_ankle)
+    avg_leg = (left_leg + right_leg) / 2.0
+
+    left_knee_angle = knee_flexion_angle(pose.left_hip, pose.left_knee, pose.left_ankle)
+    right_knee_angle = knee_flexion_angle(pose.right_hip, pose.right_knee, pose.right_ankle)
+    knee_stiffness = (knee_stiffness_risk(left_knee_angle) + knee_stiffness_risk(right_knee_angle)) / 2.0
+
+    left_alignment = ankle_foot_alignment_risk(
+        pose.left_knee, pose.left_ankle, pose.left_heel, pose.left_foot_index, avg_leg
+    )
+    right_alignment = ankle_foot_alignment_risk(
+        pose.right_knee, pose.right_ankle, pose.right_heel, pose.right_foot_index, avg_leg
+    )
+    ankle_alignment = (left_alignment + right_alignment) / 2.0
+
+    left_hip_disp = hip_displacement_proxy(
+        pose.left_hip, pose.right_hip, pose.left_heel, pose.left_foot_index, avg_leg
+    )
+    right_hip_disp = hip_displacement_proxy(
+        pose.left_hip, pose.right_hip, pose.right_heel, pose.right_foot_index, avg_leg
+    )
+    hip_disp = (left_hip_disp + right_hip_disp) / 2.0
+
+    asym = landing_asymmetry_score(
+        pose.left_hip, pose.right_hip,
+        pose.left_knee, pose.right_knee,
+        pose.left_ankle, pose.right_ankle,
+    )
+
+    core = 0.20 * knee_stiffness + 0.30 * ankle_alignment + 0.15 * hip_disp + 0.35 * asym
+
+    return {
+        "knee_stiffness_risk": knee_stiffness,
+        "ankle_foot_alignment_risk": ankle_alignment,
+        "hip_displacement_proxy": hip_disp,
+        "landing_asymmetry_score": asym,
+        "core_risk": clamp(core, 0.0, 1.0),
+    }

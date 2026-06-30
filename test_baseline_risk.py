@@ -5,9 +5,11 @@ import math
 import pytest
 
 from baseline_risk import (
+    LowerBodyPose,
     angle_at,
     ankle_foot_alignment_risk,
     clamp,
+    core_risk_score,
     distance,
     hip_displacement_proxy,
     knee_flexion_angle,
@@ -381,3 +383,38 @@ def test_landing_asymmetry_rejects_non_3d_points(idx):
     args = [points[i] if i != idx else invalid for i in range(6)]
     with pytest.raises(AssertionError):
         landing_asymmetry_score(*args)
+
+
+def test_core_risk_perfect_pose():
+    pose = LowerBodyPose(
+        left_hip=(-0.1, 1.0, 0.0),
+        right_hip=(0.1, 1.0, 0.0),
+        left_knee=(-0.1, 0.5, 0.1),
+        right_knee=(0.1, 0.5, 0.1),
+        left_ankle=(-0.1, 0.0, 0.0),
+        right_ankle=(0.1, 0.0, 0.0),
+        left_heel=(-0.1, 0.0, -0.1),
+        right_heel=(0.1, 0.0, -0.1),
+        left_foot_index=(-0.1, 0.0, 0.1),
+        right_foot_index=(0.1, 0.0, 0.1),
+    )
+    result = core_risk_score(pose)
+    assert result["core_risk"] < 0.2
+
+
+def test_core_risk_stiff_knees():
+    pose = LowerBodyPose(
+        left_hip=(-0.1, 1.4, 0.0),
+        right_hip=(0.1, 1.4, 0.0),
+        left_knee=(-0.1, 0.9, 0.0),
+        right_knee=(0.1, 0.9, 0.0),
+        left_ankle=(-0.1, 0.0, 0.0),
+        right_ankle=(0.1, 0.0, 0.0),
+        left_heel=(-0.1, 0.0, -0.1),
+        right_heel=(0.1, 0.0, -0.1),
+        left_foot_index=(-0.1, 0.0, 0.1),
+        right_foot_index=(0.1, 0.0, 0.1),
+    )
+    result = core_risk_score(pose)
+    assert result["core_risk"] > 0.2
+    assert result["knee_stiffness_risk"] > 0.5
