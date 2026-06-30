@@ -22,8 +22,9 @@ _ANKLE_FOOT_FOOT_ANGLE_THRESHOLD = 45.0
 _ANKLE_FOOT_KNEE_DEVIATION_WEIGHT = 0.70
 _ANKLE_FOOT_FOOT_ANGLE_WEIGHT = 0.30
 
-# Minimum denominator for division by leg length to guard against pathological values.
-_LEG_LENGTH_EPSILON = 1e-6
+# Threshold for hip displacement proxy; a displacement equal to one full leg length
+# maps to the maximum proxy value.
+_HIP_DISPLACEMENT_THRESHOLD = 1.0
 
 
 def clamp(value: float, low: float, high: float) -> float:
@@ -225,13 +226,13 @@ def hip_displacement_proxy(
     foot_index: Point,
     leg_length: float,
 ) -> float:
-    """Return a 0-1 proxy for pelvis displacement from the support foot base.
+    """Return normalized pelvis displacement proxy in ``[0.0, 1.0]``.
 
     The proxy measures the horizontal distance between the pelvis center
     (midpoint of the two hips) and the foot base (midpoint of heel and forefoot)
-    in the transverse plane (x-z), normalized by ``leg_length``. A value of ``0.0``
-    indicates the pelvis is centered over the foot, while ``1.0`` indicates the
-    pelvis is displaced by at least one full leg length.
+    in the transverse plane (x-z), expressed as a fraction of ``leg_length``. A
+    value of ``0.0`` indicates the pelvis is centered over the foot, while ``1.0``
+    indicates the pelvis is displaced by at least one full leg length.
 
     Args:
         left_hip: A 3-D point ``(x, y, z)`` representing the left hip landmark.
@@ -260,4 +261,4 @@ def hip_displacement_proxy(
     horizontal = math.sqrt(
         (hip_center[0] - foot_center[0]) ** 2 + (hip_center[2] - foot_center[2]) ** 2
     )
-    return clamp(horizontal / max(leg_length, _LEG_LENGTH_EPSILON), 0.0, 1.0)
+    return clamp(horizontal / leg_length / _HIP_DISPLACEMENT_THRESHOLD, 0.0, 1.0)

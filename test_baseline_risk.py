@@ -242,7 +242,27 @@ def test_hip_displacement_high():
     foot_index = (0.1, 0.0, 0.5)
     leg_length = 1.0
     proxy = hip_displacement_proxy(left_hip, right_hip, heel, foot_index, leg_length)
-    assert proxy > 0.5
+    assert proxy == pytest.approx(1.0, abs=1e-3)
+
+
+def test_hip_displacement_mid():
+    left_hip = (-0.1, 1.0, -0.25)
+    right_hip = (0.1, 1.0, -0.25)
+    heel = (-0.1, 0.0, 0.25)
+    foot_index = (0.1, 0.0, 0.25)
+    leg_length = 1.0
+    proxy = hip_displacement_proxy(left_hip, right_hip, heel, foot_index, leg_length)
+    assert proxy == pytest.approx(0.5, abs=1e-3)
+
+
+def test_hip_displacement_clamps_above_one():
+    left_hip = (-0.1, 1.0, -1.0)
+    right_hip = (0.1, 1.0, -1.0)
+    heel = (-0.1, 0.0, 1.0)
+    foot_index = (0.1, 0.0, 1.0)
+    leg_length = 1.0
+    proxy = hip_displacement_proxy(left_hip, right_hip, heel, foot_index, leg_length)
+    assert proxy == pytest.approx(1.0, abs=1e-3)
 
 
 @pytest.mark.parametrize("idx", [0, 1, 2, 3])
