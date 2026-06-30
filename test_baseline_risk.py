@@ -6,6 +6,10 @@ import pytest
 
 from baseline_risk import (
     LowerBodyPose,
+    _CORE_WEIGHT_ANKLE_FOOT_ALIGNMENT,
+    _CORE_WEIGHT_HIP_DISPLACEMENT,
+    _CORE_WEIGHT_KNEE_STIFFNESS,
+    _CORE_WEIGHT_LANDING_ASYMMETRY,
     angle_at,
     ankle_foot_alignment_risk,
     clamp,
@@ -418,3 +422,128 @@ def test_core_risk_stiff_knees():
     result = core_risk_score(pose)
     assert result["core_risk"] > 0.2
     assert result["knee_stiffness_risk"] > 0.5
+
+
+def test_core_risk_score_returns_expected_keys():
+    pose = LowerBodyPose(
+        left_hip=(0.0, 1.0, 0.0),
+        right_hip=(0.0, 1.0, 0.0),
+        left_knee=(0.0, 0.5, 0.1),
+        right_knee=(0.0, 0.5, 0.1),
+        left_ankle=(0.0, 0.0, 0.0),
+        right_ankle=(0.0, 0.0, 0.0),
+        left_heel=(0.0, 0.0, -0.1),
+        right_heel=(0.0, 0.0, -0.1),
+        left_foot_index=(0.0, 0.0, 0.1),
+        right_foot_index=(0.0, 0.0, 0.1),
+    )
+    result = core_risk_score(pose)
+    assert set(result.keys()) == {
+        "knee_stiffness_risk",
+        "ankle_foot_alignment_risk",
+        "hip_displacement_proxy",
+        "landing_asymmetry_score",
+        "core_risk",
+    }
+
+
+def test_core_risk_weighted_knee_stiffness_only():
+    # Straight, symmetric, centered legs drive knee stiffness to 1.0 while
+    # all other sub-scores remain 0.0.
+    pose = LowerBodyPose(
+        left_hip=(0.0, 1.0, 0.0),
+        right_hip=(0.0, 1.0, 0.0),
+        left_knee=(0.0, 0.5, 0.0),
+        right_knee=(0.0, 0.5, 0.0),
+        left_ankle=(0.0, 0.0, 0.0),
+        right_ankle=(0.0, 0.0, 0.0),
+        left_heel=(0.0, 0.0, -0.1),
+        right_heel=(0.0, 0.0, -0.1),
+        left_foot_index=(0.0, 0.0, 0.1),
+        right_foot_index=(0.0, 0.0, 0.1),
+    )
+    result = core_risk_score(pose)
+    assert result["knee_stiffness_risk"] == pytest.approx(1.0, abs=1e-6)
+    assert result["ankle_foot_alignment_risk"] == pytest.approx(0.0, abs=1e-6)
+    assert result["hip_displacement_proxy"] == pytest.approx(0.0, abs=1e-6)
+    assert result["landing_asymmetry_score"] == pytest.approx(0.0, abs=1e-6)
+    assert result["core_risk"] == pytest.approx(_CORE_WEIGHT_KNEE_STIFFNESS, abs=1e-6)
+
+
+def test_core_risk_weighted_ankle_alignment_only():
+    # A flexed, symmetric pose with the knee deviated laterally and the foot
+    # turned 45° drives ankle-foot alignment risk to 1.0 while keeping the
+    # other sub-scores at 0.0.
+    z_flex = 0.2
+    knee_x = 0.264
+    foot_half = 0.264
+    pose = LowerBodyPose(
+        left_hip=(0.0, 1.0, 0.0),
+        right_hip=(0.0, 1.0, 0.0),
+        left_knee=(knee_x, 0.5, z_flex),
+        right_knee=(knee_x, 0.5, z_flex),
+        left_ankle=(0.0, 0.0, 0.0),
+        right_ankle=(0.0, 0.0, 0.0),
+        left_heel=(-foot_half, 0.0, -foot_half),
+        right_heel=(-foot_half, 0.0, -foot_half),
+        left_foot_index=(foot_half, 0.0, foot_half),
+        right_foot_index=(foot_half, 0.0, foot_half),
+    )
+    result = core_risk_score(pose)
+    assert result["knee_stiffness_risk"] == pytest.approx(0.0, abs=1e-3)
+    assert result["ankle_foot_alignment_risk"] == pytest.approx(1.0, abs=1e-3)
+    assert result["hip_displacement_proxy"] == pytest.approx(0.0, abs=1e-3)
+    assert result["landing_asymmetry_score"] == pytest.approx(0.0, abs=1e-3)
+    assert result["core_risk"] == pytest.approx(_CORE_WEIGHT_ANKLE_FOOT_ALIGNMENT, abs=1e-3)
+
+
+def test_core_risk_weighted_hip_displacement_only():
+    # Flexed knees with the feet far in front of the pelvis drive the hip
+    # displacement proxy to 1.0 while the other sub-scores stay at 0.0.
+    pose = LowerBodyPose(
+        left_hip=(0.0, 1.0, 0.0),
+        right_hip=(0.0, 1.0, 0.0),
+        left_knee=(0.0, 0.5, 0.5),
+        right_knee=(0.0, 0.5, 0.5),
+        left_ankle=(0.0, 0.0, 0.0),
+        right_ankle=(0.0, 0.0, 0.0),
+        left_heel=(0.0, 0.0, 9.9),
+        right_heel=(0.0, 0.0, 9.9),
+        left_foot_index=(0.0, 0.0, 10.1),
+        right_foot_index=(0.0, 0.0, 10.1),
+    )
+    result = core_risk_score(pose)
+    assert result["knee_stiffness_risk"] == pytest.approx(0.0, abs=1e-3)
+    assert result["ankle_foot_alignment_risk"] == pytest.approx(0.0, abs=1e-3)
+    assert result["hip_displacement_proxy"] == pytest.approx(1.0, abs=1e-6)
+    assert result["landing_asymmetry_score"] == pytest.approx(0.0, abs=1e-3)
+    assert result["core_risk"] == pytest.approx(_CORE_WEIGHT_HIP_DISPLACEMENT, abs=1e-6)
+
+
+def test_core_risk_weighted_landing_asymmetry_only():
+    # Asymmetric knee angles, a small hip drop, and asymmetric ankle heights
+    # drive landing asymmetry to its maximum of 0.8 while other sub-scores
+    # remain 0.0.
+    z_145 = 0.5 / math.tan(math.radians(72.5))
+    z_85 = 0.5 / math.tan(math.radians(42.5))
+    ankle_diff = 0.2528
+    pose = LowerBodyPose(
+        left_hip=(0.0, 1.0, 0.0),
+        right_hip=(0.0, 1.0001, 0.0),
+        left_knee=(0.0, 0.5, z_145),
+        right_knee=(0.0, 0.5, z_85),
+        left_ankle=(0.0, 0.0, 0.0),
+        right_ankle=(0.0, ankle_diff, 0.0),
+        left_heel=(0.0, 0.0, -0.1),
+        right_heel=(0.0, 0.0, -0.1),
+        left_foot_index=(0.0, 0.0, 0.1),
+        right_foot_index=(0.0, 0.0, 0.1),
+    )
+    result = core_risk_score(pose)
+    assert result["knee_stiffness_risk"] == pytest.approx(0.0, abs=1e-3)
+    assert result["ankle_foot_alignment_risk"] == pytest.approx(0.0, abs=1e-3)
+    assert result["hip_displacement_proxy"] == pytest.approx(0.0, abs=1e-3)
+    assert result["landing_asymmetry_score"] == pytest.approx(0.8, abs=1e-3)
+    assert result["core_risk"] == pytest.approx(
+        _CORE_WEIGHT_LANDING_ASYMMETRY * 0.8, abs=1e-3
+    )

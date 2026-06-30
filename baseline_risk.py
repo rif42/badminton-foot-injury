@@ -43,6 +43,12 @@ _LANDING_KNEE_ASYMMETRY_WEIGHT = 0.35
 _LANDING_HIP_HEIGHT_WEIGHT = 0.25
 _LANDING_ANKLE_HEIGHT_WEIGHT = 0.20
 
+# Core risk score composition weights. They intentionally sum to 1.0.
+_CORE_WEIGHT_KNEE_STIFFNESS = 0.20
+_CORE_WEIGHT_ANKLE_FOOT_ALIGNMENT = 0.30
+_CORE_WEIGHT_HIP_DISPLACEMENT = 0.15
+_CORE_WEIGHT_LANDING_ASYMMETRY = 0.35
+
 
 def clamp(value: float, low: float, high: float) -> float:
     """Clamp ``value`` to the inclusive range ``[low, high]``.
@@ -366,6 +372,14 @@ def landing_asymmetry_score(
 
 @dataclass(frozen=True)
 class LowerBodyPose:
+    """Bilateral lower-body landmarks in 3-D space.
+
+    Points are ``(x, y, z)`` tuples where ``x`` is the medial-lateral axis,
+    ``y`` is the vertical axis, and ``z`` is the anterior-posterior axis.
+    Each side provides hip, knee, ankle, heel, and forefoot (foot_index)
+    landmarks.
+    """
+
     left_hip: Point
     right_hip: Point
     left_knee: Point
@@ -379,11 +393,34 @@ class LowerBodyPose:
 
 
 def _leg_length(hip: Point, knee: Point, ankle: Point) -> float:
+    """Return the hip-knee-ankle chain length for one leg."""
     return distance(hip, knee) + distance(knee, ankle)
 
 
 def core_risk_score(pose: LowerBodyPose) -> dict:
-    """Return core risk score and component breakdown for a pose."""
+    """Return the composed core injury-risk score and its sub-score breakdown.
+
+    The function averages bilateral cues and combines four normalized
+    sub-scores: knee stiffness, ankle-foot alignment, hip displacement, and
+    landing asymmetry. The composition weights are module-level constants
+    (``_CORE_WEIGHT_*``) and intentionally sum to ``1.0``.
+
+    Args:
+        pose: A ``LowerBodyPose`` containing 3-D landmarks for both legs.
+
+    Returns:
+        A dictionary with the following keys:
+
+        - ``knee_stiffness_risk``: average bilateral knee-stiffness risk in
+          ``[0.0, 1.0]``.
+        - ``ankle_foot_alignment_risk``: average bilateral ankle-foot
+          alignment risk in ``[0.0, 1.0]``.
+        - ``hip_displacement_proxy``: average bilateral pelvis displacement
+          proxy in ``[0.0, 1.0]``.
+        - ``landing_asymmetry_score``: left-right landing asymmetry score in
+          ``[0.0, 0.8]``.
+        - ``core_risk``: weighted composite score clamped to ``[0.0, 1.0]``.
+    """
     left_leg = _leg_length(pose.left_hip, pose.left_knee, pose.left_ankle)
     right_leg = _leg_length(pose.right_hip, pose.right_knee, pose.right_ankle)
     avg_leg = (left_leg + right_leg) / 2.0
@@ -414,7 +451,12 @@ def core_risk_score(pose: LowerBodyPose) -> dict:
         pose.left_ankle, pose.right_ankle,
     )
 
-    core = 0.20 * knee_stiffness + 0.30 * ankle_alignment + 0.15 * hip_disp + 0.35 * asym
+    core = (
+        _CORE_WEIGHT_KNEE_STIFFNESS * knee_stiffness
+        + _CORE_WEIGHT_ANKLE_FOOT_ALIGNMENT * ankle_alignment
+        + _CORE_WEIGHT_HIP_DISPLACEMENT * hip_disp
+        + _CORE_WEIGHT_LANDING_ASYMMETRY * asym
+    )
 
     return {
         "knee_stiffness_risk": knee_stiffness,
