@@ -100,7 +100,7 @@ class MotionGate:
         displacement = math.sqrt(
             (end[0] - start[0]) ** 2 + (end[2] - start[2]) ** 2
         )
-        threshold = max(leg_length, 1.0) * self.threshold_ratio
+        threshold = leg_length * self.threshold_ratio
         return "moving" if displacement > threshold else "standing"
 
 

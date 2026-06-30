@@ -67,3 +67,18 @@ def test_classify_frame_rejects_non_3d_point():
     gate = MotionGate(window_seconds=0.3, fps=30.0)
     with pytest.raises(AssertionError):
         classify_frame(gate, [(0.0, 1.0)])
+
+
+def test_classify_frame_scales_threshold_with_leg_length():
+    gate = MotionGate(window_seconds=0.3, fps=30.0)
+    leg_length = 1.7
+    threshold = leg_length * gate.threshold_ratio  # 0.085
+
+    # Displacement just below the scaled threshold -> standing.
+    below = [(0.0, 1.0, 0.0)] * 9 + [(0.084, 1.0, 0.0)]
+    assert classify_frame(gate, below, leg_length=leg_length) == "standing"
+
+    # Reset gate and feed displacement just above the scaled threshold -> moving.
+    gate = MotionGate(window_seconds=0.3, fps=30.0)
+    above = [(0.0, 1.0, 0.0)] * 9 + [(0.086, 1.0, 0.0)]
+    assert classify_frame(gate, above, leg_length=leg_length) == "moving"
