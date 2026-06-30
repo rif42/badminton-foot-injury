@@ -106,3 +106,25 @@ def test_knee_stiffness_risk_high():
 
 def test_knee_stiffness_risk_mid():
     assert knee_stiffness_risk(160.0) == pytest.approx(0.429, abs=1e-3)
+
+
+def test_knee_flexion_rejects_non_3d_points():
+    with pytest.raises(AssertionError):
+        knee_flexion_angle((0.0, 0.0), (0.0, 0.0, 0.0), (1.0, 0.0, 0.0))
+    with pytest.raises(AssertionError):
+        knee_flexion_angle((0.0, 1.0, 0.0), (0.0, 0.0), (1.0, 0.0, 0.0))
+    with pytest.raises(AssertionError):
+        knee_flexion_angle((0.0, 1.0, 0.0), (0.0, 0.0, 0.0), (1.0, 0.0))
+
+
+def test_knee_stiffness_risk_custom_bounds_above_max():
+    assert knee_stiffness_risk(100.0, min_safe=60.0, max_safe=90.0) == 1.0
+
+
+def test_knee_stiffness_risk_custom_bounds_below_min():
+    assert knee_stiffness_risk(30.0, min_safe=60.0, max_safe=90.0) == 0.0
+
+
+def test_knee_stiffness_risk_equal_bounds_triggers_guard():
+    with pytest.raises(AssertionError):
+        knee_stiffness_risk(120.0, min_safe=120.0, max_safe=120.0)

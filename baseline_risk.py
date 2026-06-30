@@ -77,12 +77,19 @@ def angle_at(a: Point, b: Point, c: Point) -> float:
 
     Returns:
         The angle in degrees, clamped to ``[0.0, 180.0]``.
+
+    Raises:
+        AssertionError: If any point is not a 3-tuple.
     """
+    assert len(a) == 3, "point a must be a 3-D coordinate"
+    assert len(b) == 3, "point b must be a 3-D coordinate"
+    assert len(c) == 3, "point c must be a 3-D coordinate"
     ba = tuple(a_i - b_i for a_i, b_i in zip(a, b))
     bc = tuple(c_i - b_i for c_i, b_i in zip(c, b))
     ba_len = math.sqrt(sum(v ** 2 for v in ba))
     bc_len = math.sqrt(sum(v ** 2 for v in bc))
     denom = ba_len * bc_len
+    # Tolerance avoids division by zero and numerical instability for near-zero vectors.
     if denom < 1e-8:
         return 0.0
     cos = clamp(sum(ba_i * bc_i for ba_i, bc_i in zip(ba, bc)) / denom, -1.0, 1.0)
@@ -90,10 +97,42 @@ def angle_at(a: Point, b: Point, c: Point) -> float:
 
 
 def knee_flexion_angle(hip: Point, knee: Point, ankle: Point) -> float:
-    """Return the knee flexion angle in degrees."""
+    """Return the knee flexion angle in degrees.
+
+    The flexion angle is the internal angle at the knee formed by the hip,
+    knee, and ankle landmarks.
+
+    Args:
+        hip: A 3-D point ``(x, y, z)`` representing the hip landmark.
+        knee: A 3-D point ``(x, y, z)`` representing the knee landmark.
+        ankle: A 3-D point ``(x, y, z)`` representing the ankle landmark.
+
+    Returns:
+        The knee flexion angle in degrees, clamped to ``[0.0, 180.0]``.
+
+    Raises:
+        AssertionError: If any landmark is not a 3-tuple.
+    """
     return angle_at(hip, knee, ankle)
 
 
 def knee_stiffness_risk(knee_angle: float, min_safe: float = 145.0, max_safe: float = 180.0) -> float:
-    """Return 0–1 risk that the knee is too straight during loading."""
+    """Return 0–1 risk that the knee is too straight during loading.
+
+    Angles at or below ``min_safe`` yield ``0.0`` (flexed enough). Angles at or
+    above ``max_safe`` yield ``1.0`` (too straight). Values in between are
+    linearly interpolated.
+
+    Args:
+        knee_angle: The knee flexion angle in degrees.
+        min_safe: The angle below which risk is zero.
+        max_safe: The angle above which risk is one.
+
+    Returns:
+        A normalized risk value in ``[0.0, 1.0]``.
+
+    Raises:
+        AssertionError: If ``max_safe`` is not greater than ``min_safe``.
+    """
+    assert max_safe > min_safe, "max_safe must be greater than min_safe"
     return clamp((knee_angle - min_safe) / (max_safe - min_safe), 0.0, 1.0)
