@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import csv
-import os
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -34,19 +32,26 @@ def test_analyze_video_outputs_csv(tmp_path):
     fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
     output_csv = tmp_path / "out.csv"
 
-    with patch("cv2.VideoCapture") as mock_cap, \
-         patch("mediapipe.solutions.pose.Pose") as mock_pose_class:
+    mock_pose = MagicMock()
+    mock_pose.process.return_value.pose_landmarks = None
+    mock_pose.close = MagicMock()
+
+    with patch("cv2.VideoCapture") as mock_cap:
         mock_cap_instance = MagicMock()
-        mock_cap_instance.read.side_effect = [(True, fake_frame), (True, fake_frame), (False, None)]
+        mock_cap_instance.read.side_effect = [
+            (True, fake_frame),
+            (True, fake_frame),
+            (False, None),
+        ]
         mock_cap_instance.get.side_effect = lambda key: 30.0 if key == 5 else 3.0
         mock_cap.return_value = mock_cap_instance
 
-        mock_pose = MagicMock()
-        mock_pose_class.return_value = mock_pose
-        mock_result = MagicMock()
-        mock_result.pose_landmarks = None
-        mock_pose.process.return_value = mock_result
-
-        analyze_video(str(tmp_path / "fake.mp4"), str(output_csv), None, show_preview=False)
+        analyze_video(
+            str(tmp_path / "fake.mp4"),
+            str(output_csv),
+            None,
+            show_preview=False,
+            pose_detector=mock_pose,
+        )
 
     assert output_csv.exists()

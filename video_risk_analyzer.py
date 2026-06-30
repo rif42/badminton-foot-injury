@@ -55,6 +55,25 @@ _CORE_RISK_RISKY_THRESHOLD = 0.65
 DEFAULT_OUTPUT_CSV = "risk_report.csv"
 
 
+def _create_pose_detector() -> Any:
+    """Create and return a default MediaPipe Pose detector.
+
+    This helper is separated from ``analyze_video`` so that tests and other
+    callers can inject a mock or alternative detector without importing
+    MediaPipe directly.
+
+    Returns:
+        A MediaPipe ``Pose`` instance configured for video streams.
+    """
+    mp_pose = mp.solutions.pose
+    return mp_pose.Pose(
+        static_image_mode=False,
+        model_complexity=0,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5,
+    )
+
+
 def _landmark_to_point(landmarks: Any, index: int, image_shape: tuple[int, ...]) -> Point:
     """Convert a normalized MediaPipe landmark to an image-space ``Point``.
 
@@ -145,6 +164,7 @@ def analyze_video(
     output_csv: str,
     output_video: str | None,
     show_preview: bool = False,
+    pose_detector: Any = None,
 ) -> None:
     """Analyze a video and write a per-frame risk CSV report.
 
@@ -155,6 +175,10 @@ def analyze_video(
             written. If ``None``, no video is produced.
         show_preview: If ``True``, display a live preview window. Press ``q`` to
             quit early.
+        pose_detector: Optional pose detector to use. The object must provide
+            ``process(rgb_array)`` and ``close()`` methods compatible with the
+            MediaPipe Pose API. If ``None``, a default MediaPipe Pose detector
+            is created via ``_create_pose_detector()``.
 
     Raises:
         RuntimeError: If the input video cannot be opened.
@@ -172,13 +196,7 @@ def analyze_video(
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         writer = cv2.VideoWriter(output_video, fourcc, fps, (width, height))
 
-    mp_pose = mp.solutions.pose
-    pose = mp_pose.Pose(
-        static_image_mode=False,
-        model_complexity=0,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
-    )
+    pose = pose_detector if pose_detector is not None else _create_pose_detector()
 
     gate = MotionGate(window_seconds=0.3, fps=fps)
     results: list[dict[str, Any]] = []
