@@ -36,6 +36,8 @@ _LANDING_HIP_HEIGHT_RELATIVE_THRESHOLD = 0.8
 # of average leg length; 20 % maps to the maximum ankle-height score.
 _LANDING_ANKLE_HEIGHT_RELATIVE_THRESHOLD = 0.2
 # Relative contribution of knee angle, hip height, and ankle height asymmetries.
+# The three weights intentionally sum to 0.8; the remaining 0.20 is reserved for
+# a trunk/pelvis wobble component that is omitted in this simplified version.
 _LANDING_KNEE_ASYMMETRY_WEIGHT = 0.35
 _LANDING_HIP_HEIGHT_WEIGHT = 0.25
 _LANDING_ANKLE_HEIGHT_WEIGHT = 0.20
@@ -286,7 +288,7 @@ def landing_asymmetry_score(
     left_ankle: Point,
     right_ankle: Point,
 ) -> float:
-    """Return a 0-1 score for left-right imbalance during landing or a lunge.
+    """Return a score for left-right imbalance during landing or a lunge.
 
     The score combines three cues:
 
@@ -300,6 +302,11 @@ def landing_asymmetry_score(
        left and right ankles, expressed as a fraction of
        ``_LANDING_ANKLE_HEIGHT_RELATIVE_THRESHOLD`` times the average leg length.
 
+    The three component weights sum to ``0.8`` because a fourth trunk/pelvis
+    wobble component (weight ``0.20``) is omitted in this simplified version.
+    Consequently, the returned score saturates at ``0.8`` when all three cues
+    are at their individual maxima.
+
     Args:
         left_hip: A 3-D point ``(x, y, z)`` representing the left hip landmark.
         right_hip: A 3-D point ``(x, y, z)`` representing the right hip landmark.
@@ -309,7 +316,7 @@ def landing_asymmetry_score(
         right_ankle: A 3-D point ``(x, y, z)`` representing the right ankle landmark.
 
     Returns:
-        A normalized asymmetry score in ``[0.0, 1.0]``.
+        An asymmetry score in ``[0.0, 0.8]``.
 
     Raises:
         AssertionError: If any landmark is not a 3-tuple.

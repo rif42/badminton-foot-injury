@@ -316,7 +316,55 @@ def test_landing_asymmetry_hip_drop():
         left_knee, right_knee,
         left_ankle, right_ankle,
     )
-    assert score > 0.1
+    assert score == pytest.approx(0.221, abs=1e-3)
+
+
+def test_landing_asymmetry_knee_angle_only():
+    left_hip = (-0.1, 1.0, 0.0)
+    right_hip = (0.1, 1.0, 0.0)
+    # Left leg straight, right leg flexed to 120°.
+    left_knee = (-0.1, 0.5, 0.0)
+    right_knee = (0.1, 0.5, math.sqrt(1.0 / 12.0))
+    left_ankle = (-0.1, 0.0, 0.0)
+    right_ankle = (0.1, 0.0, 0.0)
+    score = landing_asymmetry_score(
+        left_hip, right_hip,
+        left_knee, right_knee,
+        left_ankle, right_ankle,
+    )
+    assert score == pytest.approx(0.35, abs=1e-3)
+
+
+def test_landing_asymmetry_ankle_height_only():
+    left_hip = (-0.1, 1.0, 0.0)
+    right_hip = (0.1, 1.0, 0.0)
+    left_knee = (-0.1, 0.5, 0.0)
+    right_knee = (0.1, 0.5, 0.0)
+    left_ankle = (-0.1, 0.0, 0.0)
+    right_ankle = (0.1, 0.2, 0.0)
+    score = landing_asymmetry_score(
+        left_hip, right_hip,
+        left_knee, right_knee,
+        left_ankle, right_ankle,
+    )
+    assert score == pytest.approx(0.20, abs=1e-3)
+
+
+def test_landing_asymmetry_saturates_at_max():
+    # Configure each component to hit its individual maximum so the weighted
+    # total reaches the simplified-model ceiling of 0.8.
+    left_hip = (-0.1, 0.0, 0.0)
+    right_hip = (0.1, 1.0, 0.0)
+    left_knee = (-0.1, -0.5, 0.0)
+    right_knee = (0.1, 0.5, math.sqrt(1.0 / 12.0))
+    left_ankle = (-0.1, -1.0, 0.0)
+    right_ankle = (0.1, 0.0, 0.0)
+    score = landing_asymmetry_score(
+        left_hip, right_hip,
+        left_knee, right_knee,
+        left_ankle, right_ankle,
+    )
+    assert score == pytest.approx(0.8, abs=1e-3)
 
 
 @pytest.mark.parametrize("idx", [0, 1, 2, 3, 4, 5])
