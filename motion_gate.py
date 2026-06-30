@@ -1,18 +1,23 @@
 """Simple moving/standing motion gate based on hip-center displacement.
 
-The gate buffers the most recent hip-center observations and classifies the
-subject as ``"moving"`` when the horizontal (x-z) displacement over the
-configured time window exceeds a ratio of the leg length, or ``"standing"``
-otherwise.
+The gate buffers the most recent ``window_frames`` hip-center observations and
+classifies the subject as ``_LABEL_MOVING`` when the horizontal (x-z)
+displacement between the oldest and newest observation in the window exceeds a
+ratio of the leg length, or ``_LABEL_STANDING`` otherwise.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import List, Tuple
 
-Point = Tuple[float, float, float]
+Point = tuple[float, float, float]
+
+_DEFAULT_WINDOW_SECONDS = 0.3
+_DEFAULT_FPS = 30.0
+_DEFAULT_THRESHOLD_RATIO = 0.05
+_LABEL_MOVING = "moving"
+_LABEL_STANDING = "standing"
 
 
 @dataclass
@@ -22,23 +27,22 @@ class MotionGate:
     Points are ``(x, y, z)`` tuples where ``x`` is the medial-lateral axis,
     ``y`` is the vertical axis, and ``z`` is the anterior-posterior axis.
     Classification uses only the horizontal (x-z) displacement between the
-    oldest and newest buffered observations.
+    oldest and newest observations in the rolling window.
 
     Args:
-        window_seconds: Minimum observation window in seconds. The gate needs
-            at least ``window_frames`` observations before it can report
-            ``"moving"``. Must be positive.
+        window_seconds: Length of the rolling classification window in seconds.
+            Must be positive.
         fps: Frames per second of the input stream. Must be positive.
         threshold_ratio: Displacement threshold expressed as a fraction of
             ``leg_length``. Must be non-negative.
-        history: Internal buffer of observed hip centers. Usually left as the
-            default empty list.
+        history: Public internal buffer of the most recent ``window_frames``
+            hip-center observations. Usually left as the default empty list.
     """
 
-    window_seconds: float = 0.3
-    fps: float = 30.0
-    threshold_ratio: float = 0.05
-    history: List[Point] = field(default_factory=list)
+    window_seconds: float = _DEFAULT_WINDOW_SECONDS
+    fps: float = _DEFAULT_FPS
+    threshold_ratio: float = _DEFAULT_THRESHOLD_RATIO
+    history: list[Point] = field(default_factory=list)
 
     def __post_init__(self):
         """Validate constructor arguments."""
@@ -54,13 +58,16 @@ class MotionGate:
     def update(self, hip_center: Point, leg_length: float) -> str:
         """Append a new hip center and return the current classification.
 
+        The internal history buffer is trimmed to the most recent
+        ``window_frames`` observations before classification.
+
         Args:
             hip_center: A 3-D point ``(x, y, z)`` representing the hip center.
             leg_length: Positive leg length, in the same units as the point
                 coordinates.
 
         Returns:
-            ``"moving"`` or ``"standing"``.
+            ``_LABEL_MOVING`` or ``_LABEL_STANDING``.
 
         Raises:
             AssertionError: If ``hip_center`` is not a 3-tuple or if
@@ -70,13 +77,15 @@ class MotionGate:
         assert leg_length > 0, "leg_length must be positive"
 
         self.history.append(hip_center)
+        if len(self.history) > self.window_frames:
+            self.history.pop(0)
         return self.classify(leg_length)
 
     def classify(self, leg_length: float) -> str:
-        """Classify motion from the current history buffer.
+        """Classify motion from the current rolling window.
 
         Motion is reported when the horizontal displacement between the oldest
-        and newest buffered observations exceeds
+        and newest observations in the trimmed buffer exceeds
         ``leg_length * threshold_ratio``.
 
         Args:
@@ -84,9 +93,10 @@ class MotionGate:
                 coordinates.
 
         Returns:
-            ``"moving"`` if the buffered horizontal displacement exceeds the
-            threshold; otherwise ``"standing"``. Returns ``"standing"`` when
-            fewer than ``window_frames`` observations are available.
+            ``_LABEL_MOVING`` if the buffered horizontal displacement exceeds
+            the threshold; otherwise ``_LABEL_STANDING``. Returns
+            ``_LABEL_STANDING`` when fewer than ``window_frames`` observations
+            are available.
 
         Raises:
             AssertionError: If ``leg_length`` is not positive.
@@ -94,19 +104,19 @@ class MotionGate:
         assert leg_length > 0, "leg_length must be positive"
 
         if len(self.history) < self.window_frames:
-            return "standing"
+            return _LABEL_STANDING
         start = self.history[0]
         end = self.history[-1]
         displacement = math.sqrt(
             (end[0] - start[0]) ** 2 + (end[2] - start[2]) ** 2
         )
         threshold = leg_length * self.threshold_ratio
-        return "moving" if displacement > threshold else "standing"
+        return _LABEL_MOVING if displacement > threshold else _LABEL_STANDING
 
 
 def classify_frame(
     gate: MotionGate,
-    hip_centers: List[Point],
+    hip_centers: list[Point],
     leg_length: float = 1.0,
 ) -> str:
     """Feed a sequence of hip centers through ``gate`` and return the last label.
@@ -118,14 +128,14 @@ def classify_frame(
             coordinates. Defaults to ``1.0``.
 
     Returns:
-        The classification produced for the final frame, or ``"standing"`` if
-        ``hip_centers`` is empty.
+        The classification produced for the final frame, or ``_LABEL_STANDING``
+        if ``hip_centers`` is empty.
 
     Raises:
         AssertionError: If any point in ``hip_centers`` is not a 3-tuple or if
             ``leg_length`` is not positive.
     """
-    result = "standing"
+    result = _LABEL_STANDING
     for hc in hip_centers:
         result = gate.update(hc, leg_length)
     return result
