@@ -253,7 +253,7 @@ def analyze_video(
     pose = pose_detector if pose_detector is not None else _create_pose_detector()
 
     gate = MotionGate(window_seconds=_MOTION_GATE_WINDOW_SECONDS, fps=fps)
-    results: list[dict[str, Any]] = []
+    results: list[dict[str, Any]] = [] if output_csv is not None else None
     frame_idx = 0
 
     try:
@@ -296,7 +296,8 @@ def analyze_video(
                     row.update(score)
                     row["status"] = _status(score["core_risk"])
 
-            results.append(row)
+            if results is not None:
+                results.append(row)
 
             if writer is not None or display_window:
                 display = frame.copy()
@@ -332,14 +333,13 @@ def analyze_video(
         if display_window:
             cv2.destroyAllWindows()
 
-    rows = build_csv_rows(results)
-    if not rows or output_csv is None:
-        return
-
-    with open(output_csv, "w", newline="") as f:
-        writer_csv = csv.DictWriter(f, fieldnames=rows[0].keys())
-        writer_csv.writeheader()
-        writer_csv.writerows(rows)
+    if output_csv is not None:
+        rows = build_csv_rows(results)
+        if rows:
+            with open(output_csv, "w", newline="") as f:
+                writer_csv = csv.DictWriter(f, fieldnames=rows[0].keys())
+                writer_csv.writeheader()
+                writer_csv.writerows(rows)
 
 
 def main(argv: list[str] | None = None) -> int:

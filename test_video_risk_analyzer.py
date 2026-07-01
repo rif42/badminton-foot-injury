@@ -276,6 +276,44 @@ def test_analyze_video_webcam_preview_writes_no_files(tmp_path, monkeypatch):
     assert not (tmp_path / "risk_report.csv").exists()
 
 
+def test_analyze_video_webcam_writes_csv_when_requested(tmp_path, monkeypatch):
+    """Webcam mode records CSV when --output-csv is explicitly provided."""
+    monkeypatch.chdir(tmp_path)
+    fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+    mock_pose = MagicMock()
+    mock_pose.process.return_value.pose_landmarks = None
+    mock_pose.close = MagicMock()
+
+    output_csv = tmp_path / "webcam_report.csv"
+
+    with (
+        patch("cv2.VideoCapture") as mock_cap,
+        patch("cv2.imshow"),
+        patch("cv2.waitKey", return_value=ord("q")),
+        patch("cv2.destroyAllWindows"),
+    ):
+        mock_cap_instance = MagicMock()
+        mock_cap_instance.read.side_effect = [(True, fake_frame), (False, None)]
+        mock_cap_instance.get.side_effect = lambda key: {
+            cv2.CAP_PROP_FPS: 30.0,
+            cv2.CAP_PROP_FRAME_WIDTH: 640.0,
+            cv2.CAP_PROP_FRAME_HEIGHT: 480.0,
+        }[key]
+        mock_cap.return_value = mock_cap_instance
+
+        analyze_video(
+            None,
+            str(output_csv),
+            None,
+            show_preview=False,
+            pose_detector=mock_pose,
+            webcam_index=0,
+        )
+
+    assert output_csv.exists()
+
+
 def test_main_prints_expected_output(capsys):
     fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
 
