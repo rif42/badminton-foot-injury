@@ -357,7 +357,7 @@ def test_main_runs_webcam_mode(capsys, tmp_path, monkeypatch):
     with (
         patch("cv2.VideoCapture") as mock_cap,
         patch("video_risk_analyzer._create_pose_detector", return_value=mock_pose),
-        patch("cv2.imshow"),
+        patch("cv2.imshow") as mock_imshow,
         patch("cv2.waitKey", return_value=ord("q")),
         patch("cv2.destroyAllWindows"),
     ):
@@ -376,6 +376,7 @@ def test_main_runs_webcam_mode(capsys, tmp_path, monkeypatch):
     mock_cap.assert_called_once_with(0)
     captured = capsys.readouterr()
     assert "Wrote CSV" not in captured.out
+    mock_imshow.assert_called_once()
 
 
 def test_main_on_synthetic_video(tmp_path):
