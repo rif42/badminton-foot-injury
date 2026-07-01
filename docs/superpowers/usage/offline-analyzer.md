@@ -1,6 +1,6 @@
-## Offline Video Risk Analyzer
+## Video Risk Analyzer
 
-Analyze a recorded badminton clip for lower-body injury-risk patterns.
+Analyze a badminton lower-body injury-risk pattern from a recorded video file or a live webcam feed.
 
 ### Prerequisites
 
