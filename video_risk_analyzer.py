@@ -189,38 +189,57 @@ def build_csv_rows(results: list[dict[str, Any]]) -> list[dict[str, str]]:
 
 
 def analyze_video(
-    input_path: str,
-    output_csv: str,
+    input_path: str | None,
+    output_csv: str | None,
     output_video: str | None,
     show_preview: bool = False,
     pose_detector: PoseDetector | None = None,
-    **kwargs: Any,
+    webcam_index: int | None = None,
 ) -> None:
     """Analyze a video and write a per-frame risk CSV report.
 
     Args:
-        input_path: Path to the input video file.
-        output_csv: Path where the CSV report will be written.
+        input_path: Path to the input video file. Optional when using a
+            webcam via ``webcam_index``.
+        output_csv: Path where the CSV report will be written. Optional in
+            webcam mode; if ``None`` no CSV is produced.
         output_video: Optional path where an annotated output video will be
             written. If ``None``, no video is produced.
-        show_preview: If ``True``, display a live preview window. Press ``q`` to
-            quit early.
+        show_preview: If ``True``, display a live preview window for file
+            input. Press ``q`` to quit early.
         pose_detector: Optional pose detector to use. The object must satisfy
             the ``PoseDetector`` protocol (``process`` / ``close``). If
             ``None``, a default MediaPipe Pose detector is created via
             ``_create_pose_detector()``.
+        webcam_index: If provided, open the webcam at this index instead of
+            ``input_path``. Webcam mode always shows a preview window.
 
     Raises:
-        RuntimeError: If the input video or output video writer cannot be
-            opened.
+        RuntimeError: If the input video/webcam or output video writer cannot
+            be opened.
     """
-    cap = cv2.VideoCapture(input_path)
+    if webcam_index is not None:
+        cap = cv2.VideoCapture(webcam_index)
+        source_name = f"webcam at index {webcam_index}"
+        is_webcam = True
+    else:
+        cap = cv2.VideoCapture(input_path)
+        source_name = f"video: {input_path}"
+        is_webcam = False
+
     if not cap.isOpened():
-        raise RuntimeError(f"Could not open video: {input_path}")
+        raise RuntimeError(f"Could not open {source_name}")
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    if is_webcam:
+        if width <= 0 or height <= 0:
+            width, height = 640, 480
+        display_window = True
+    else:
+        display_window = show_preview
 
     writer: cv2.VideoWriter | None = None
     if output_video:
@@ -279,7 +298,7 @@ def analyze_video(
 
             results.append(row)
 
-            if writer is not None or show_preview:
+            if writer is not None or display_window:
                 display = frame.copy()
                 if row["status"] == _STATUS_ACCEPTABLE:
                     color = _COLOR_ACCEPTABLE
@@ -299,7 +318,7 @@ def analyze_video(
                 )
                 if writer is not None:
                     writer.write(display)
-                if show_preview:
+                if display_window:
                     cv2.imshow("Risk Analyzer", display)
                     if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
@@ -314,7 +333,7 @@ def analyze_video(
             cv2.destroyAllWindows()
 
     rows = build_csv_rows(results)
-    if not rows:
+    if not rows or output_csv is None:
         return
 
     with open(output_csv, "w", newline="") as f:

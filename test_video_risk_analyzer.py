@@ -237,6 +237,43 @@ def test_analyze_video_raises_when_video_writer_cannot_be_opened(tmp_path):
             )
 
 
+def test_analyze_video_webcam_preview_writes_no_files(tmp_path, monkeypatch):
+    """Webcam mode with no output flags shows preview and writes nothing."""
+    monkeypatch.chdir(tmp_path)
+    fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+    mock_pose = MagicMock()
+    mock_pose.process.return_value.pose_landmarks = None
+    mock_pose.close = MagicMock()
+
+    with (
+        patch("cv2.VideoCapture") as mock_cap,
+        patch("cv2.imshow") as mock_imshow,
+        patch("cv2.waitKey", return_value=ord("q")),
+    ):
+        mock_cap_instance = MagicMock()
+        mock_cap_instance.read.side_effect = [(True, fake_frame), (False, None)]
+        mock_cap_instance.get.side_effect = lambda key: {
+            cv2.CAP_PROP_FPS: 30.0,
+            cv2.CAP_PROP_FRAME_WIDTH: 640.0,
+            cv2.CAP_PROP_FRAME_HEIGHT: 480.0,
+        }[key]
+        mock_cap.return_value = mock_cap_instance
+
+        analyze_video(
+            None,
+            None,
+            None,
+            show_preview=False,
+            pose_detector=mock_pose,
+            webcam_index=0,
+        )
+
+    mock_cap.assert_called_once_with(0)
+    mock_imshow.assert_called_once()
+    assert not (tmp_path / "risk_report.csv").exists()
+
+
 def test_main_prints_expected_output(capsys):
     fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
 
