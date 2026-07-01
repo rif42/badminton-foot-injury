@@ -16,6 +16,7 @@ from video_risk_analyzer import (
     _status,
     analyze_video,
     build_csv_rows,
+    draw_pose_overlay,
     main,
 )
 
@@ -312,6 +313,54 @@ def test_analyze_video_webcam_writes_csv_when_requested(tmp_path, monkeypatch):
         )
 
     assert output_csv.exists()
+
+
+def test_draw_pose_overlay_draws_skeleton():
+    """Smoke test: overlay should draw lines/circles and change the image."""
+    pose = LowerBodyPose(
+        left_hip=(100.0, 100.0, 0.0),
+        right_hip=(200.0, 100.0, 0.0),
+        left_knee=(100.0, 200.0, 0.0),
+        right_knee=(200.0, 200.0, 0.0),
+        left_ankle=(100.0, 300.0, 0.0),
+        right_ankle=(200.0, 300.0, 0.0),
+        left_heel=(90.0, 310.0, 0.0),
+        right_heel=(190.0, 310.0, 0.0),
+        left_foot_index=(110.0, 310.0, 0.0),
+        right_foot_index=(210.0, 310.0, 0.0),
+    )
+    image = np.zeros((400, 320, 3), dtype=np.uint8)
+    draw_pose_overlay(image, pose, "caution", 0.45)
+
+    # Very basic checks: image should no longer be all black.
+    assert np.any(image > 0)
+
+
+def test_draw_pose_overlay_colors_by_status():
+    """Overlay color should match the risk status."""
+    pose = LowerBodyPose(
+        left_hip=(100.0, 100.0, 0.0),
+        right_hip=(200.0, 100.0, 0.0),
+        left_knee=(100.0, 200.0, 0.0),
+        right_knee=(200.0, 200.0, 0.0),
+        left_ankle=(100.0, 300.0, 0.0),
+        right_ankle=(200.0, 300.0, 0.0),
+        left_heel=(90.0, 310.0, 0.0),
+        right_heel=(190.0, 310.0, 0.0),
+        left_foot_index=(110.0, 310.0, 0.0),
+        right_foot_index=(210.0, 310.0, 0.0),
+    )
+
+    for status, expected_color in [
+        ("acceptable", (0, 255, 0)),
+        ("caution", (0, 255, 255)),
+        ("risky", (0, 0, 255)),
+    ]:
+        image = np.zeros((400, 320, 3), dtype=np.uint8)
+        draw_pose_overlay(image, pose, status, 0.5)
+        # Check that the expected BGR color appears somewhere on the skeleton.
+        mask = np.all(image == expected_color, axis=2)
+        assert np.any(mask), f"Expected color {expected_color} not found for status {status}"
 
 
 def test_main_prints_expected_output(capsys):

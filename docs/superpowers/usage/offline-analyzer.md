@@ -46,6 +46,14 @@ Webcam mode shows a live preview window and writes no files by default. Press `q
 python video_risk_analyzer.py --webcam --output-csv live_report.csv --output-video live_annotated.mp4
 ```
 
+### Windows batch shortcut
+
+On Windows, use the provided `run_analyzer.bat` to automatically activate the virtual environment and forward all arguments:
+
+```bat
+run_analyzer.bat input.mp4 --output-csv report.csv
+```
+
 ### Optional flags
 
 - `--output-video annotated.mp4` — write an annotated side-by-side video.

@@ -81,6 +81,25 @@ _LABEL_ORIGIN = (10, 30)
 _LABEL_FONT_SCALE = 0.7
 _LABEL_FONT_THICKNESS = 2
 
+_SKELETON_LINE_THICKNESS = 3
+_SKELETON_CIRCLE_RADIUS = 5
+_SKELETON_CIRCLE_THICKNESS = -1  # Filled circle
+
+# Lower-body skeleton connections drawn on the overlay.
+_SKELETON_CONNECTIONS: list[tuple[str, str]] = [
+    ("left_hip", "left_knee"),
+    ("left_knee", "left_ankle"),
+    ("left_ankle", "left_heel"),
+    ("left_ankle", "left_foot_index"),
+    ("left_heel", "left_foot_index"),
+    ("right_hip", "right_knee"),
+    ("right_knee", "right_ankle"),
+    ("right_ankle", "right_heel"),
+    ("right_ankle", "right_foot_index"),
+    ("right_heel", "right_foot_index"),
+    ("left_hip", "right_hip"),
+]
+
 DEFAULT_OUTPUT_CSV = "risk_report.csv"
 
 
@@ -159,6 +178,87 @@ def _status(core_risk: float) -> str:
     if core_risk < _CORE_RISK_RISKY_THRESHOLD:
         return _STATUS_CAUTION
     return _STATUS_RISKY
+
+
+def _status_color(status: str) -> tuple[int, int, int]:
+    """Return the BGR color associated with a risk status.
+
+    Args:
+        status: One of ``"acceptable"``, ``"caution"``, or ``"risky"``.
+
+    Returns:
+        An OpenCV BGR color tuple.
+    """
+    if status == _STATUS_ACCEPTABLE:
+        return _COLOR_ACCEPTABLE
+    if status == _STATUS_CAUTION:
+        return _COLOR_CAUTION
+    return _COLOR_RISKY
+
+
+def draw_pose_overlay(
+    image: Any,
+    pose: LowerBodyPose,
+    status: str,
+    core_risk: float,
+) -> None:
+    """Draw a color-coded lower-body skeleton overlay on ``image``.
+
+    Joints and bones are colored by the overall risk status:
+    green for acceptable, yellow for caution, red for risky. A status
+    badge is drawn in the top-left corner.
+
+    Args:
+        image: The image to draw on (modified in place). Expected to be a
+            BGR OpenCV image.
+        pose: A ``LowerBodyPose`` in pixel coordinates.
+        status: One of ``"acceptable"``, ``"caution"``, or ``"risky"``.
+        core_risk: The core risk score in ``[0.0, 1.0]``.
+    """
+    color = _status_color(status)
+    landmarks: dict[str, Point] = {
+        "left_hip": pose.left_hip,
+        "right_hip": pose.right_hip,
+        "left_knee": pose.left_knee,
+        "right_knee": pose.right_knee,
+        "left_ankle": pose.left_ankle,
+        "right_ankle": pose.right_ankle,
+        "left_heel": pose.left_heel,
+        "right_heel": pose.right_heel,
+        "left_foot_index": pose.left_foot_index,
+        "right_foot_index": pose.right_foot_index,
+    }
+
+    for start_name, end_name in _SKELETON_CONNECTIONS:
+        start = landmarks[start_name]
+        end = landmarks[end_name]
+        cv2.line(
+            image,
+            (int(round(start[0])), int(round(start[1]))),
+            (int(round(end[0])), int(round(end[1]))),
+            color,
+            _SKELETON_LINE_THICKNESS,
+        )
+
+    for point in landmarks.values():
+        cv2.circle(
+            image,
+            (int(round(point[0])), int(round(point[1]))),
+            _SKELETON_CIRCLE_RADIUS,
+            color,
+            _SKELETON_CIRCLE_THICKNESS,
+        )
+
+    label = f"{status.upper()} {core_risk:.2f}"
+    cv2.putText(
+        image,
+        label,
+        _LABEL_ORIGIN,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        _LABEL_FONT_SCALE,
+        color,
+        _LABEL_FONT_THICKNESS,
+    )
 
 
 def build_csv_rows(results: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -301,22 +401,24 @@ def analyze_video(
 
             if writer is not None or display_window:
                 display = frame.copy()
-                if row["status"] == _STATUS_ACCEPTABLE:
-                    color = _COLOR_ACCEPTABLE
-                elif row["status"] == _STATUS_CAUTION:
-                    color = _COLOR_CAUTION
+                if pose_obj is not None:
+                    draw_pose_overlay(
+                        display,
+                        pose_obj,
+                        row["status"],
+                        row["core_risk"],
+                    )
                 else:
-                    color = _COLOR_RISKY
-                label = f"{row['status'].upper()} {row['core_risk']:.2f}"
-                cv2.putText(
-                    display,
-                    label,
-                    _LABEL_ORIGIN,
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    _LABEL_FONT_SCALE,
-                    color,
-                    _LABEL_FONT_THICKNESS,
-                )
+                    # No pose detected: show a neutral status badge only.
+                    cv2.putText(
+                        display,
+                        "NO POSE",
+                        _LABEL_ORIGIN,
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        _LABEL_FONT_SCALE,
+                        (128, 128, 128),
+                        _LABEL_FONT_THICKNESS,
+                    )
                 if writer is not None:
                     writer.write(display)
                 if display_window:
