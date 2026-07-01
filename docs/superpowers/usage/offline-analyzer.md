@@ -26,10 +26,30 @@ The default output CSV filename is `risk_report.csv`. To specify a different fil
 python video_risk_analyzer.py input.mp4 --output-csv report.csv
 ```
 
+### Webcam mode
+
+Analyze a live webcam feed instead of a file:
+
+```bash
+python video_risk_analyzer.py --webcam
+```
+
+Use a specific camera index:
+
+```bash
+python video_risk_analyzer.py --webcam 1
+```
+
+Webcam mode shows a live preview window and writes no files by default. Press `q` to quit. To record the session, provide the usual output flags:
+
+```bash
+python video_risk_analyzer.py --webcam --output-csv live_report.csv --output-video live_annotated.mp4
+```
+
 ### Optional flags
 
 - `--output-video annotated.mp4` — write an annotated side-by-side video.
-- `--show-preview` — display a live preview window while processing.
+- `--show-preview` — display a live preview window while processing a file (preview is always on in webcam mode).
 
 ### Output CSV columns
 
