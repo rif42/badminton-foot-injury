@@ -345,6 +345,39 @@ def test_main_prints_expected_output(capsys):
     assert "Wrote CSV report to report.csv" in captured.out
 
 
+def test_main_runs_webcam_mode(capsys, tmp_path, monkeypatch):
+    """main(['--webcam']) opens camera 0 and shows preview without writing files."""
+    monkeypatch.chdir(tmp_path)
+    fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+    mock_pose = MagicMock()
+    mock_pose.process.return_value.pose_landmarks = None
+    mock_pose.close = MagicMock()
+
+    with (
+        patch("cv2.VideoCapture") as mock_cap,
+        patch("video_risk_analyzer._create_pose_detector", return_value=mock_pose),
+        patch("cv2.imshow"),
+        patch("cv2.waitKey", return_value=ord("q")),
+        patch("cv2.destroyAllWindows"),
+    ):
+        mock_cap_instance = MagicMock()
+        mock_cap_instance.read.side_effect = [(True, fake_frame), (False, None)]
+        mock_cap_instance.get.side_effect = lambda key: {
+            cv2.CAP_PROP_FPS: 30.0,
+            cv2.CAP_PROP_FRAME_WIDTH: 640.0,
+            cv2.CAP_PROP_FRAME_HEIGHT: 480.0,
+        }[key]
+        mock_cap.return_value = mock_cap_instance
+
+        rc = main(["--webcam"])
+
+    assert rc == 0
+    mock_cap.assert_called_once_with(0)
+    captured = capsys.readouterr()
+    assert "Wrote CSV" not in captured.out
+
+
 def test_main_on_synthetic_video(tmp_path):
     video_path = tmp_path / "test.mp4"
     output_csv = tmp_path / "out.csv"
