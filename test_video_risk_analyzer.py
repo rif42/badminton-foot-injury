@@ -250,6 +250,7 @@ def test_analyze_video_webcam_preview_writes_no_files(tmp_path, monkeypatch):
         patch("cv2.VideoCapture") as mock_cap,
         patch("cv2.imshow") as mock_imshow,
         patch("cv2.waitKey", return_value=ord("q")),
+        patch("cv2.destroyAllWindows") as mock_destroy,
     ):
         mock_cap_instance = MagicMock()
         mock_cap_instance.read.side_effect = [(True, fake_frame), (False, None)]
@@ -271,6 +272,7 @@ def test_analyze_video_webcam_preview_writes_no_files(tmp_path, monkeypatch):
 
     mock_cap.assert_called_once_with(0)
     mock_imshow.assert_called_once()
+    mock_destroy.assert_called_once()
     assert not (tmp_path / "risk_report.csv").exists()
 
 

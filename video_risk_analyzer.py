@@ -329,7 +329,7 @@ def analyze_video(
         if writer is not None:
             writer.release()
         pose.close()
-        if show_preview:
+        if display_window:
             cv2.destroyAllWindows()
 
     rows = build_csv_rows(results)
