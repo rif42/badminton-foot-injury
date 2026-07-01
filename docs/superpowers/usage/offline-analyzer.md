@@ -1,4 +1,4 @@
-## Video Risk Analyzer
+## Offline and Webcam Risk Analyzer
 
 Analyze a badminton lower-body injury-risk pattern from a recorded video file or a live webcam feed.
 
