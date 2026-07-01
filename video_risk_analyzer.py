@@ -194,6 +194,7 @@ def analyze_video(
     output_video: str | None,
     show_preview: bool = False,
     pose_detector: PoseDetector | None = None,
+    **kwargs: Any,
 ) -> None:
     """Analyze a video and write a per-frame risk CSV report.
 
@@ -332,12 +333,25 @@ def main(argv: list[str] | None = None) -> int:
         Process exit code.
     """
     parser = argparse.ArgumentParser(
-        description="Offline badminton lower-body risk analyzer."
+        description="Offline and live webcam badminton lower-body risk analyzer."
     )
-    parser.add_argument("input_video", help="Path to input video.")
+    parser.add_argument(
+        "input_video",
+        nargs="?",
+        default=None,
+        help="Path to input video (optional if --webcam is used).",
+    )
+    parser.add_argument(
+        "--webcam",
+        nargs="?",
+        const=0,
+        type=int,
+        default=None,
+        help="Use live webcam input (optional index, default 0).",
+    )
     parser.add_argument(
         "--output-csv",
-        default=DEFAULT_OUTPUT_CSV,
+        default=None,
         help="Path to output CSV.",
     )
     parser.add_argument(
@@ -352,8 +366,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    analyze_video(args.input_video, args.output_csv, args.output_video, args.show_preview)
-    print(f"Wrote CSV report to {args.output_csv}")
+    if args.webcam is None and args.input_video is None:
+        parser.error("Either input_video or --webcam is required.")
+    if args.webcam is not None and args.input_video is not None:
+        parser.error("Cannot specify both input_video and --webcam.")
+
+    output_csv = args.output_csv if args.output_csv is not None else (DEFAULT_OUTPUT_CSV if args.webcam is None else None)
+
+    analyze_video(
+        args.input_video,
+        output_csv,
+        args.output_video,
+        args.show_preview,
+        webcam_index=args.webcam,
+    )
+    if output_csv:
+        print(f"Wrote CSV report to {output_csv}")
     if args.output_video:
         print(f"Wrote annotated video to {args.output_video}")
     return 0

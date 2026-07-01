@@ -290,3 +290,15 @@ def test_main_on_synthetic_video(tmp_path):
         reader = csv.DictReader(f)
         rows = list(reader)
     assert len(rows) == 30
+
+
+def test_main_requires_input_or_webcam():
+    """Calling main with no source raises a usage error."""
+    with pytest.raises(SystemExit):
+        main([])
+
+
+def test_main_rejects_both_sources():
+    """Cannot specify both a file and a webcam."""
+    with pytest.raises(SystemExit):
+        main(["fake.mp4", "--webcam"])
