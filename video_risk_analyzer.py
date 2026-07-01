@@ -253,7 +253,7 @@ def analyze_video(
     pose = pose_detector if pose_detector is not None else _create_pose_detector()
 
     gate = MotionGate(window_seconds=_MOTION_GATE_WINDOW_SECONDS, fps=fps)
-    results: list[dict[str, Any]] = [] if output_csv is not None else None
+    results: list[dict[str, Any]] | None = [] if output_csv is not None else None
     frame_idx = 0
 
     try:
@@ -390,7 +390,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.webcam is not None and args.input_video is not None:
         parser.error("Cannot specify both input_video and --webcam.")
 
-    output_csv = args.output_csv if args.output_csv is not None else (DEFAULT_OUTPUT_CSV if args.webcam is None else None)
+    if args.output_csv is not None:
+        output_csv = args.output_csv
+    elif args.webcam is None:
+        output_csv = DEFAULT_OUTPUT_CSV
+    else:
+        output_csv = None
 
     analyze_video(
         args.input_video,
