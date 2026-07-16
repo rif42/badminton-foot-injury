@@ -12,3 +12,6 @@ report.csv
 /data/examples/*.csv
 /data/examples/*_annotated.mp4
 *.pyc
+
+# Deepwork session state
+/.slim/deepwork/

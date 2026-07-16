@@ -355,6 +355,26 @@ def build_csv_rows(results: list[dict[str, Any]]) -> list[dict[str, str]]:
     ]
 
 
+def _try_video_writer(
+    path: str,
+    fourcc_code: str,
+    fps: float,
+    frame_size: tuple[int, int],
+) -> cv2.VideoWriter | None:
+    """Try to open a ``cv2.VideoWriter`` with the requested codec.
+
+    Returns the writer if it opens successfully, otherwise ``None`` (after
+    releasing the failed writer). This lets callers try H.264 first and fall
+    back to a more widely available codec without raising an error.
+    """
+    fourcc = cv2.VideoWriter_fourcc(*fourcc_code)
+    writer = cv2.VideoWriter(path, fourcc, fps, frame_size)
+    if writer.isOpened():
+        return writer
+    writer.release()
+    return None
+
+
 def analyze_video(
     input_path: str | None,
     output_csv: str | None,
@@ -413,10 +433,15 @@ def analyze_video(
 
     writer: cv2.VideoWriter | None = None
     if output_video:
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(output_video, fourcc, fps, (width, height))
-        if writer is not None and not writer.isOpened():
-            writer.release()
+        writer = _try_video_writer(output_video, "avc1", fps, (width, height))
+        if writer is None:
+            print(
+                f"H.264 codec not available for {output_video}; "
+                "falling back to mp4v.",
+                file=sys.stderr,
+            )
+            writer = _try_video_writer(output_video, "mp4v", fps, (width, height))
+        if writer is None:
             cap.release()
             raise RuntimeError(f"Could not open video writer: {output_video}")
 

@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Badminton Lower-Body Injury Risk Analyzer</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --panel: #ffffff;
+      --text: #1f2328;
+      --muted: #586069;
+      --border: #d1d5da;
+      --accent: #0969da;
+      --danger: #cf222e;
+      --ok: #73e29c;
+      --warn: #ffca5f;
+      --risk: #ff6b6b;
+      --gray: #888888;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1117;
+        --panel: #161b22;
+        --text: #c9d1d9;
+        --muted: #8b949e;
+        --border: #30363d;
+        --accent: #58a6ff;
+        --danger: #f85149;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin: 0 0 0.25rem;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 0.5rem;
+      padding: 2rem;
+      text-align: center;
+      color: var(--muted);
+      transition: border-color 0.15s, background 0.15s;
+      cursor: pointer;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(9, 105, 218, 0.05);
+    }
+
+    .drop-zone input[type="file"] {
+      display: none;
+    }
+
+    .drop-zone strong {
+      color: var(--text);
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    button {
+      font-family: inherit;
+      font-size: 0.95rem;
+      padding: 0.55rem 1rem;
+      border: 1px solid var(--border);
+      border-radius: 0.375rem;
+      background: var(--panel);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    button.danger {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: #fff;
+    }
+
+    .progress-wrap {
+      margin-top: 1rem;
+    }
+
+    .progress-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+
+    progress {
+      width: 100%;
+      height: 0.75rem;
+      border: none;
+      border-radius: 0.375rem;
+      overflow: hidden;
+      background: var(--bg);
+      accent-color: var(--accent);
+    }
+
+    progress::-webkit-progress-bar {
+      background: var(--bg);
+    }
+
+    progress::-webkit-progress-value {
+      background: var(--accent);
+    }
+
+    progress::-moz-progress-bar {
+      background: var(--accent);
+    }
+
+    .video-stack {
+      display: grid;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    video,
+    canvas {
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      border-radius: 0.375rem;
+      border: 1px solid var(--border);
+      background: #000;
+    }
+
+    #sourceVideo {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .output-section {
+      display: none;
+    }
+
+    .output-section.visible {
+      display: block;
+    }
+
+    .download-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .table-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .table-toolbar label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+
+    .summary {
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 0.5rem 0.6rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      font-weight: 600;
+      background: var(--bg);
+      position: sticky;
+      top: 0;
+    }
+
+    td {
+      font-variant-numeric: tabular-nums;
+    }
+
+    tr:hover td {
+      background: var(--bg);
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 0.1rem 0.4rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+
+    .status-acceptable { background: #73e29c33; color: #1a7f3f; }
+    .status-caution    { background: #ffca5f33; color: #8a5a00; }
+    .status-risky      { background: #ff6b6b33; color: #a61b1b; }
+    .status-no-pose    { background: #88888833; color: #555555; }
+
+    @media (prefers-color-scheme: dark) {
+      .status-acceptable { color: #9be7b6; }
+      .status-caution    { color: #ffd98e; }
+      .status-risky      { color: #ff9d9d; }
+      .status-no-pose    { color: #b0b0b0; }
+    }
+
+    .table-scroll {
+      max-height: 24rem;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 0.375rem;
+    }
+
+    .error {
+      background: rgba(207, 34, 46, 0.1);
+      border: 1px solid var(--danger);
+      color: var(--danger);
+      padding: 0.75rem;
+      border-radius: 0.375rem;
+      margin-top: 1rem;
+    }
+
+    .disclaimer {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 1.5rem;
+    }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/vision_bundle.mjs"
+    }
+  }
+  </script>
+</head>
+<body>
+  <main>
+    <h1>Badminton Lower-Body Injury Risk Analyzer</h1>
+    <p class="subtitle">Client-side video analysis using MediaPipe Pose. No data leaves your browser.</p>
+
+    <section class="panel">
+      <label class="drop-zone" id="dropZone" for="fileInput">
+        <strong>Choose a video file</strong> or drag and drop it here
+        <br />
+        <span>MP4, WebM, MOV, and other common formats accepted</span>
+        <input type="file" id="fileInput" accept="video/*,.mp4,.webm,.mov,.mkv,.avi" />
+      </label>
+
+      <div class="controls">
+        <button id="processBtn" class="primary" disabled>Process video</button>
+        <button id="cancelBtn" class="danger" disabled>Cancel</button>
+      </div>
+
+      <div class="progress-wrap" id="progressWrap" style="display:none;">
+        <div class="progress-info">
+          <span id="progressText">Frame 0 / 0</span>
+          <span id="progressPercent">0%</span>
+        </div>
+        <progress id="progressBar" value="0" max="100"></progress>
+      </div>
+
+      <div id="errorBox" class="error" style="display:none;"></div>
+    </section>
+
+    <!-- Hidden source video used for decoding / pose detection -->
+    <video id="sourceVideo" playsinline crossorigin="anonymous" muted></video>
+
+    <!-- Processing preview canvas (also the recording source) -->
+    <div class="panel" id="previewPanel" style="display:none;">
+      <h2>Processing preview</h2>
+      <canvas id="previewCanvas"></canvas>
+    </div>
+
+    <!-- Output sections -->
+    <div id="outputSection" class="output-section">
+      <div class="panel">
+        <h2>Annotated video</h2>
+        <video id="outputVideo" controls playsinline></video>
+        <div class="download-row">
+          <a id="downloadVideoLink" class="button-link" download="annotated_video.webm">
+            <button class="primary">Download annotated video</button>
+          </a>
+          <a id="downloadCsvLink" class="button-link" download="risk_report.csv">
+            <button>Download CSV</button>
+          </a>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Risk report</h2>
+        <div class="table-toolbar">
+          <label>
+            <input type="checkbox" id="showAllFrames" />
+            Show all frames
+          </label>
+          <span class="summary" id="summaryText">Showing 0 risky of 0 frames</span>
+        </div>
+        <div class="table-scroll">
+          <table id="csvTable">
+            <thead>
+              <tr>
+                <th>frame</th>
+                <th>time_sec</th>
+                <th>is_moving</th>
+                <th>knee_stiffness_risk</th>
+                <th>ankle_foot_alignment_risk</th>
+                <th>hip_displacement_proxy</th>
+                <th>landing_asymmetry_score</th>
+                <th>core_risk</th>
+                <th>status</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <p class="disclaimer">For educational use only. Not a medical diagnostic tool.</p>
+  </main>
+
+  <script type="module">
+    import { PoseLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
+
+    // --------------------------------------------------------------------------
+    // Constants ported from baseline_risk.py and video_risk_analyzer.py
+    // --------------------------------------------------------------------------
+    const LOWER_BODY_INDICES = {
+      left_hip: 23,
+      right_hip: 24,
+      left_knee: 25,
+      right_knee: 26,
+      left_ankle: 27,
+      right_ankle: 28,
+      left_heel: 29,
+      right_heel: 30,
+      left_foot_index: 31,
+      right_foot_index: 32,
+    };
+
+    const STATUS_ACCEPTABLE = 'acceptable';
+    const STATUS_CAUTION = 'caution';
+    const STATUS_RISKY = 'risky';
+
+    const CORE_RISK_CAUTION_THRESHOLD = 0.35;
+    const CORE_RISK_RISKY_THRESHOLD = 0.65;
+
+    const ANKLE_FOOT_KNEE_DEVIATION_THRESHOLD = 0.22;
+    const ANKLE_FOOT_FOOT_ANGLE_THRESHOLD = 45.0;
+    const ANKLE_FOOT_KNEE_DEVIATION_WEIGHT = 0.70;
+    const ANKLE_FOOT_FOOT_ANGLE_WEIGHT = 0.30;
+
+    const HIP_DISPLACEMENT_THRESHOLD = 1.0;
+
+    const LANDING_KNEE_ANGLE_THRESHOLD = 60.0;
+    const LANDING_HIP_HEIGHT_RELATIVE_THRESHOLD = 0.8;
+    const LANDING_ANKLE_HEIGHT_RELATIVE_THRESHOLD = 0.2;
+    const LANDING_KNEE_ASYMMETRY_WEIGHT = 0.35;
+    const LANDING_HIP_HEIGHT_WEIGHT = 0.25;
+    const LANDING_ANKLE_HEIGHT_WEIGHT = 0.20;
+
+    const CORE_WEIGHT_KNEE_STIFFNESS = 0.20;
+    const CORE_WEIGHT_ANKLE_FOOT_ALIGNMENT = 0.30;
+    const CORE_WEIGHT_HIP_DISPLACEMENT = 0.15;
+    const CORE_WEIGHT_LANDING_ASYMMETRY = 0.35;
+
+    const MOTION_GATE_WINDOW_SECONDS = 0.3;
+    const MOTION_GATE_THRESHOLD_RATIO = 0.05;
+
+    const SKELETON_CONNECTIONS = [
+      ['left_hip', 'left_knee'],
+      ['left_knee', 'left_ankle'],
+      ['left_ankle', 'left_heel'],
+      ['left_ankle', 'left_foot_index'],
+      ['left_heel', 'left_foot_index'],
+      ['right_hip', 'right_knee'],
+      ['right_knee', 'right_ankle'],
+      ['right_ankle', 'right_heel'],
+      ['right_ankle', 'right_foot_index'],
+      ['right_heel', 'right_foot_index'],
+      ['left_hip', 'right_hip'],
+    ];
+
+    const STATUS_COLORS = {
+      acceptable: '#73e29c',
+      caution: '#ffca5f',
+      risky: '#ff6b6b',
+      'no-pose': '#888888',
+    };
+
+    const MIN_VISIBILITY = 0.5;
+
+    // --------------------------------------------------------------------------
+    // DOM references
+    // --------------------------------------------------------------------------
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const processBtn = document.getElementById('processBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const progressWrap = document.getElementById('progressWrap');
+    const progressText = document.getElementById('progressText');
+    const progressPercent = document.getElementById('progressPercent');
+    const progressBar = document.getElementById('progressBar');
+    const errorBox = document.getElementById('errorBox');
+    const sourceVideo = document.getElementById('sourceVideo');
+    const previewPanel = document.getElementById('previewPanel');
+    const previewCanvas = document.getElementById('previewCanvas');
+    const outputSection = document.getElementById('outputSection');
+    const outputVideo = document.getElementById('outputVideo');
+    const downloadVideoLink = document.getElementById('downloadVideoLink');
+    const downloadCsvLink = document.getElementById('downloadCsvLink');
+    const csvTable = document.getElementById('csvTable');
+    const showAllFrames = document.getElementById('showAllFrames');
+    const summaryText = document.getElementById('summaryText');
+
+    const ctx = previewCanvas.getContext('2d', { alpha: false });
+
+    // --------------------------------------------------------------------------
+    // State
+    // --------------------------------------------------------------------------
+    let poseLandmarker = null;
+    let selectedFile = null;
+    let isCancelled = false;
+    let isProcessing = false;
+    let csvRows = [];
+    let outputVideoBlobUrl = null;
+    let outputCsvBlobUrl = null;
+
+    // --------------------------------------------------------------------------
+    // Math helpers (ported from baseline_risk.py)
+    // --------------------------------------------------------------------------
+    function clamp(value, low, high) {
+      return Math.max(low, Math.min(high, value));
+    }
+
+    function distance(a, b) {
+      return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
+    }
+
+    function midpoint(a, b) {
+      return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+    }
+
+    function angleAt(a, b, c) {
+      // Internal angle at b formed by a-b-c, in degrees.
+      const ba = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+      const bc = [c[0] - b[0], c[1] - b[1], c[2] - b[2]];
+      const baLen = Math.sqrt(ba[0] ** 2 + ba[1] ** 2 + ba[2] ** 2);
+      const bcLen = Math.sqrt(bc[0] ** 2 + bc[1] ** 2 + bc[2] ** 2);
+      const denom = baLen * bcLen;
+      if (denom < 1e-8) return 0;
+      const cos = clamp((ba[0] * bc[0] + ba[1] * bc[1] + ba[2] * bc[2]) / denom, -1, 1);
+      return (Math.acos(cos) * 180) / Math.PI;
+    }
+
+    function kneeFlexionAngle(hip, knee, ankle) {
+      return angleAt(hip, knee, ankle);
+    }
+
+    function kneeStiffnessRisk(kneeAngle, minSafe = 145, maxSafe = 180) {
+      return clamp((kneeAngle - minSafe) / (maxSafe - minSafe), 0, 1);
+    }
+
+    function ankleFootAlignmentRisk(knee, ankle, heel, footIndex, legLength) {
+      const footCenter = midpoint(heel, footIndex);
+      const kneeOverFootDeviation = Math.abs(knee[0] - footCenter[0]) / legLength;
+      const kneeDevScore = clamp(kneeOverFootDeviation / ANKLE_FOOT_KNEE_DEVIATION_THRESHOLD, 0, 1);
+
+      const dx = footIndex[0] - heel[0];
+      const dz = footIndex[2] - heel[2];
+      const footAngle = Math.abs((Math.atan2(dx, dz) * 180) / Math.PI);
+      const angleScore = clamp(footAngle / ANKLE_FOOT_FOOT_ANGLE_THRESHOLD, 0, 1);
+
+      return ANKLE_FOOT_KNEE_DEVIATION_WEIGHT * kneeDevScore + ANKLE_FOOT_FOOT_ANGLE_WEIGHT * angleScore;
+    }
+
+    function hipDisplacementProxy(leftHip, rightHip, heel, footIndex, legLength) {
+      const hipCenter = midpoint(leftHip, rightHip);
+      const footCenter = midpoint(heel, footIndex);
+      const horizontal = Math.sqrt(
+        (hipCenter[0] - footCenter[0]) ** 2 + (hipCenter[2] - footCenter[2]) ** 2
+      );
+      return clamp(horizontal / legLength / HIP_DISPLACEMENT_THRESHOLD, 0, 1);
+    }
+
+    function landingAsymmetryScore(leftHip, rightHip, leftKnee, rightKnee, leftAnkle, rightAnkle) {
+      const leftKneeAngle = kneeFlexionAngle(leftHip, leftKnee, leftAnkle);
+      const rightKneeAngle = kneeFlexionAngle(rightHip, rightKnee, rightAnkle);
+      const kneeAsym = clamp(
+        Math.abs(leftKneeAngle - rightKneeAngle) / LANDING_KNEE_ANGLE_THRESHOLD,
+        0,
+        1
+      );
+
+      const pelvisWidth = distance(leftHip, rightHip);
+      const hipHeightScore = clamp(
+        Math.abs(leftHip[1] - rightHip[1]) / Math.max(pelvisWidth * LANDING_HIP_HEIGHT_RELATIVE_THRESHOLD, 1e-6),
+        0,
+        1
+      );
+
+      const avgLegLength =
+        (distance(leftHip, leftKnee) +
+          distance(leftKnee, leftAnkle) +
+          distance(rightHip, rightKnee) +
+          distance(rightKnee, rightAnkle)) /
+        2;
+      const ankleHeightScore = clamp(
+        Math.abs(leftAnkle[1] - rightAnkle[1]) / Math.max(avgLegLength * LANDING_ANKLE_HEIGHT_RELATIVE_THRESHOLD, 1e-6),
+        0,
+        1
+      );
+
+      return (
+        LANDING_KNEE_ASYMMETRY_WEIGHT * kneeAsym +
+        LANDING_HIP_HEIGHT_WEIGHT * hipHeightScore +
+        LANDING_ANKLE_HEIGHT_WEIGHT * ankleHeightScore
+      );
+    }
+
+    function legLength(hip, knee, ankle) {
+      return distance(hip, knee) + distance(knee, ankle);
+    }
+
+    function coreRiskScore(pose) {
+      const leftLeg = legLength(pose.left_hip, pose.left_knee, pose.left_ankle);
+      const rightLeg = legLength(pose.right_hip, pose.right_knee, pose.right_ankle);
+      const avgLeg = (leftLeg + rightLeg) / 2;
+
+      const leftKneeAngle = kneeFlexionAngle(pose.left_hip, pose.left_knee, pose.left_ankle);
+      const rightKneeAngle = kneeFlexionAngle(pose.right_hip, pose.right_knee, pose.right_ankle);
+      const kneeStiffness =
+        (kneeStiffnessRisk(leftKneeAngle) + kneeStiffnessRisk(rightKneeAngle)) / 2;
+
+      const leftAlignment = ankleFootAlignmentRisk(
+        pose.left_knee, pose.left_ankle, pose.left_heel, pose.left_foot_index, avgLeg
+      );
+      const rightAlignment = ankleFootAlignmentRisk(
+        pose.right_knee, pose.right_ankle, pose.right_heel, pose.right_foot_index, avgLeg
+      );
+      const ankleAlignment = (leftAlignment + rightAlignment) / 2;
+
+      const leftHipDisp = hipDisplacementProxy(
+        pose.left_hip, pose.right_hip, pose.left_heel, pose.left_foot_index, avgLeg
+      );
+      const rightHipDisp = hipDisplacementProxy(
+        pose.left_hip, pose.right_hip, pose.right_heel, pose.right_foot_index, avgLeg
+      );
+      const hipDisp = (leftHipDisp + rightHipDisp) / 2;
+
+      const asym = landingAsymmetryScore(
+        pose.left_hip, pose.right_hip,
+        pose.left_knee, pose.right_knee,
+        pose.left_ankle, pose.right_ankle
+      );
+
+      const core =
+        CORE_WEIGHT_KNEE_STIFFNESS * kneeStiffness +
+        CORE_WEIGHT_ANKLE_FOOT_ALIGNMENT * ankleAlignment +
+        CORE_WEIGHT_HIP_DISPLACEMENT * hipDisp +
+        CORE_WEIGHT_LANDING_ASYMMETRY * asym;
+
+      return {
+        knee_stiffness_risk: kneeStiffness,
+        ankle_foot_alignment_risk: ankleAlignment,
+        hip_displacement_proxy: hipDisp,
+        landing_asymmetry_score: asym,
+        core_risk: clamp(core, 0, 1),
+      };
+    }
+
+    function statusFromCoreRisk(coreRisk) {
+      if (coreRisk < CORE_RISK_CAUTION_THRESHOLD) return STATUS_ACCEPTABLE;
+      if (coreRisk < CORE_RISK_RISKY_THRESHOLD) return STATUS_CAUTION;
+      return STATUS_RISKY;
+    }
+
+    // --------------------------------------------------------------------------
+    // MotionGate (ported from motion_gate.py)
+    // --------------------------------------------------------------------------
+    class MotionGate {
+      constructor(windowSeconds, fps, thresholdRatio) {
+        this.windowSeconds = windowSeconds;
+        this.fps = fps;
+        this.thresholdRatio = thresholdRatio;
+        this.history = [];
+      }
+
+      get windowFrames() {
+        return Math.max(1, Math.round(this.windowSeconds * this.fps));
+      }
+
+      update(hipCenter, legLength) {
+        this.history.push(hipCenter);
+        if (this.history.length > this.windowFrames) {
+          this.history.shift();
+        }
+        return this.classify(legLength);
+      }
+
+      classify(legLength) {
+        if (this.history.length < this.windowFrames) return 'standing';
+        const start = this.history[0];
+        const end = this.history[this.history.length - 1];
+        const displacement = Math.sqrt((end[0] - start[0]) ** 2 + (end[2] - start[2]) ** 2);
+        return displacement > legLength * this.thresholdRatio ? 'moving' : 'standing';
+      }
+    }
+
+    // --------------------------------------------------------------------------
+    // MediaPipe initialization
+    // --------------------------------------------------------------------------
+    async function initPoseLandmarker() {
+      if (poseLandmarker) return;
+      try {
+        const vision = await FilesetResolver.forVisionTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm'
+        );
+        poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO',
+          numPoses: 1,
+          minPoseDetectionConfidence: 0.5,
+          minPosePresenceConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+        });
+      } catch (err) {
+        throw new Error('Failed to load MediaPipe pose model. ' + (err?.message || err));
+      }
+    }
+
+    // --------------------------------------------------------------------------
+    // UI helpers
+    // --------------------------------------------------------------------------
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.style.display = 'block';
+    }
+
+    function clearError() {
+      errorBox.textContent = '';
+      errorBox.style.display = 'none';
+    }
+
+    function updateProgress(current, total) {
+      progressText.textContent = `Frame ${current} / ${total}`;
+      const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+      progressPercent.textContent = `${percent}%`;
+      progressBar.value = percent;
+    }
+
+    function setProcessingUi(processing) {
+      processBtn.disabled = processing || !selectedFile;
+      cancelBtn.disabled = !processing;
+      progressWrap.style.display = processing || csvRows.length > 0 ? 'block' : 'none';
+      fileInput.disabled = processing;
+      dropZone.style.pointerEvents = processing ? 'none' : 'auto';
+      dropZone.style.opacity = processing ? '0.6' : '1';
+    }
+
+    // --------------------------------------------------------------------------
+    // Overlay drawing
+    // --------------------------------------------------------------------------
+    function drawOverlay(ctx, width, height, pose, status, coreRisk) {
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(sourceVideo, 0, 0, width, height);
+
+      const color = STATUS_COLORS[status] || STATUS_COLORS['no-pose'];
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      if (status === 'no-pose') {
+        drawStatusBadge(ctx, 'NO POSE', color);
+        return;
+      }
+
+      const landmarks = {
+        left_hip: pose.left_hip,
+        right_hip: pose.right_hip,
+        left_knee: pose.left_knee,
+        right_knee: pose.right_knee,
+        left_ankle: pose.left_ankle,
+        right_ankle: pose.right_ankle,
+        left_heel: pose.left_heel,
+        right_heel: pose.right_heel,
+        left_foot_index: pose.left_foot_index,
+        right_foot_index: pose.right_foot_index,
+      };
+
+      for (const [startName, endName] of SKELETON_CONNECTIONS) {
+        const start = landmarks[startName];
+        const end = landmarks[endName];
+        ctx.beginPath();
+        ctx.moveTo(start[0], start[1]);
+        ctx.lineTo(end[0], end[1]);
+        ctx.stroke();
+      }
+
+      for (const point of Object.values(landmarks)) {
+        ctx.beginPath();
+        ctx.arc(point[0], point[1], 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      const label = `${status.toUpperCase()} ${coreRisk.toFixed(2)}`;
+      drawStatusBadge(ctx, label, color);
+    }
+
+    function drawStatusBadge(ctx, text, color) {
+      ctx.font = '700 16px sans-serif';
+      const paddingX = 8;
+      const paddingY = 5;
+      const textMetrics = ctx.measureText(text);
+      const boxW = textMetrics.width + paddingX * 2;
+      const boxH = 22 + paddingY * 2;
+      const x = 10;
+      const y = 10;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.roundRect(x, y, boxW, boxH, 4);
+      ctx.fill();
+
+      ctx.fillStyle = color;
+      ctx.fillText(text, x + paddingX, y + boxH - paddingY - 2);
+    }
+
+    // --------------------------------------------------------------------------
+    // CSV helpers
+    // --------------------------------------------------------------------------
+    function buildCsvRows(rows) {
+      const fieldnames = [
+        'frame',
+        'time_sec',
+        'is_moving',
+        'knee_stiffness_risk',
+        'ankle_foot_alignment_risk',
+        'hip_displacement_proxy',
+        'landing_asymmetry_score',
+        'core_risk',
+        'status',
+      ];
+      return rows.map((row) => {
+        const out = {};
+        for (const key of fieldnames) {
+          out[key] = String(row[key] ?? '');
+        }
+        return out;
+      });
+    }
+
+    function csvToBlob(rows) {
+      const fieldnames = [
+        'frame',
+        'time_sec',
+        'is_moving',
+        'knee_stiffness_risk',
+        'ankle_foot_alignment_risk',
+        'hip_displacement_proxy',
+        'landing_asymmetry_score',
+        'core_risk',
+        'status',
+      ];
+      const lines = [fieldnames.join(',')];
+      for (const row of rows) {
+        lines.push(fieldnames.map((key) => row[key]).join(','));
+      }
+      return new Blob([lines.join('\n')], { type: 'text/csv' });
+    }
+
+    // --------------------------------------------------------------------------
+    // Frame processing
+    // --------------------------------------------------------------------------
+    function extractPose(landmarks, width, height) {
+      const pose = {};
+      for (const [name, idx] of Object.entries(LOWER_BODY_INDICES)) {
+        const lm = landmarks[idx];
+        if (!lm || lm.visibility < MIN_VISIBILITY) return null;
+        pose[name] = [lm.x * width, lm.y * height, lm.z * width];
+      }
+      return pose;
+    }
+
+    async function seekToFrame(idx, fps) {
+      return new Promise((resolve, reject) => {
+        if (isCancelled) {
+          reject(new Error('Processing cancelled'));
+          return;
+        }
+        const targetTime = idx / fps;
+        if (Math.abs(sourceVideo.currentTime - targetTime) < 0.0005) {
+          resolve();
+          return;
+        }
+
+        const onReady = () => {
+          cleanup();
+          resolve();
+        };
+        const onError = () => {
+          cleanup();
+          reject(new Error('Video seek failed'));
+        };
+        const cleanup = () => {
+          sourceVideo.removeEventListener('seeked', onReady);
+          sourceVideo.removeEventListener('error', onError);
+          if (rvfcId !== null) sourceVideo.cancelVideoFrameCallback(rvfcId);
+        };
+
+        let rvfcId = null;
+        if ('requestVideoFrameCallback' in sourceVideo) {
+          rvfcId = sourceVideo.requestVideoFrameCallback(onReady);
+        } else {
+          sourceVideo.addEventListener('seeked', onReady, { once: true });
+        }
+        sourceVideo.addEventListener('error', onError, { once: true });
+        sourceVideo.currentTime = targetTime;
+      });
+    }
+
+    function createMediaRecorder(stream) {
+      const mimeTypes = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+      ];
+      let options = {};
+      let supported = false;
+      for (const mime of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(mime)) {
+          options.mimeType = mime;
+          supported = true;
+          break;
+        }
+      }
+      if (!supported) {
+        throw new Error('This browser does not support WebM video recording.');
+      }
+      return new MediaRecorder(stream, options);
+    }
+
+    async function processVideoFile(file) {
+      clearError();
+      isCancelled = false;
+      isProcessing = true;
+      csvRows = [];
+      outputSection.classList.remove('visible');
+      previewPanel.style.display = 'block';
+
+      if (outputVideoBlobUrl) URL.revokeObjectURL(outputVideoBlobUrl);
+      if (outputCsvBlobUrl) URL.revokeObjectURL(outputCsvBlobUrl);
+      outputVideo.src = '';
+      downloadVideoLink.href = '#';
+      downloadCsvLink.href = '#';
+
+      setProcessingUi(true);
+      updateProgress(0, 0);
+
+      try {
+        await initPoseLandmarker();
+      } catch (err) {
+        showError(err.message);
+        setProcessingUi(false);
+        isProcessing = false;
+        return;
+      }
+
+      const url = URL.createObjectURL(file);
+      sourceVideo.src = url;
+      sourceVideo.load();
+
+      let fps;
+      let totalFrames;
+      try {
+        await new Promise((resolve, reject) => {
+          const onLoaded = () => {
+            cleanup();
+            resolve();
+          };
+          const onError = () => {
+            cleanup();
+            reject(new Error('The video could not be decoded.'));
+          };
+          const cleanup = () => {
+            sourceVideo.removeEventListener('loadedmetadata', onLoaded);
+            sourceVideo.removeEventListener('error', onError);
+          };
+          sourceVideo.addEventListener('loadedmetadata', onLoaded, { once: true });
+          sourceVideo.addEventListener('error', onError, { once: true });
+        });
+
+        fps = sourceVideo.frameRate && sourceVideo.frameRate > 0
+          ? sourceVideo.frameRate
+          : sourceVideo.getVideoPlaybackQuality && sourceVideo.getVideoPlaybackQuality().totalFrameCount
+            ? sourceVideo.duration / sourceVideo.getVideoPlaybackQuality().totalFrameCount
+            : 30;
+        // Prefer videoTracks frameRate if available.
+        if (sourceVideo.videoTracks && sourceVideo.videoTracks.length > 0) {
+          const settings = sourceVideo.videoTracks[0].getSettings && sourceVideo.videoTracks[0].getSettings();
+          if (settings && settings.frameRate) fps = settings.frameRate;
+        }
+        if (!fps || !isFinite(fps) || fps <= 0) fps = 30;
+
+        totalFrames = Math.max(1, Math.floor(sourceVideo.duration * fps));
+        const width = sourceVideo.videoWidth;
+        const height = sourceVideo.videoHeight;
+
+        previewCanvas.width = width;
+        previewCanvas.height = height;
+
+        const gate = new MotionGate(MOTION_GATE_WINDOW_SECONDS, fps, MOTION_GATE_THRESHOLD_RATIO);
+        const startOffsetMs = performance.now();
+        const chunks = [];
+        const stream = previewCanvas.captureStream(fps);
+        const videoTrack = stream.getVideoTracks()[0];
+        const recorder = createMediaRecorder(stream);
+        recorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) chunks.push(e.data);
+        };
+
+        const recorderStopped = new Promise((resolve, reject) => {
+          recorder.onstop = () => resolve();
+          recorder.onerror = () => reject(new Error('MediaRecorder error'));
+        });
+
+        recorder.start();
+
+        // Frame loop: seek / wait, detect, draw, record.
+        for (let frameIdx = 0; frameIdx < totalFrames; frameIdx++) {
+          if (isCancelled) {
+            throw new Error('Processing cancelled');
+          }
+
+          await seekToFrame(frameIdx, fps);
+
+          const timestampMs = frameIdx * (1000 / fps) + startOffsetMs;
+          const result = poseLandmarker.detectForVideo(sourceVideo, timestampMs);
+          const landmarks = result?.landmarks?.[0];
+
+          const timeSec = Math.round((frameIdx / fps) * 1000) / 1000;
+          let row = {
+            frame: frameIdx,
+            time_sec: timeSec,
+            is_moving: false,
+            knee_stiffness_risk: 0,
+            ankle_foot_alignment_risk: 0,
+            hip_displacement_proxy: 0,
+            landing_asymmetry_score: 0,
+            core_risk: 0,
+            status: STATUS_ACCEPTABLE,
+          };
+          let overlayStatus = 'no-pose';
+          let coreRisk = 0;
+          let pose = null;
+
+          if (landmarks) {
+            pose = extractPose(landmarks, width, height);
+            if (pose) {
+              const hipCenter = midpoint(pose.left_hip, pose.right_hip);
+              const legLen =
+                (Math.abs(pose.left_hip[1] - pose.left_ankle[1]) +
+                  Math.abs(pose.right_hip[1] - pose.right_ankle[1])) /
+                2;
+              const state = gate.update(hipCenter, legLen);
+              row.is_moving = state === 'moving';
+
+              if (state === 'moving') {
+                const score = coreRiskScore(pose);
+                row.knee_stiffness_risk = score.knee_stiffness_risk;
+                row.ankle_foot_alignment_risk = score.ankle_foot_alignment_risk;
+                row.hip_displacement_proxy = score.hip_displacement_proxy;
+                row.landing_asymmetry_score = score.landing_asymmetry_score;
+                row.core_risk = score.core_risk;
+                row.status = statusFromCoreRisk(score.core_risk);
+                coreRisk = score.core_risk;
+              } else {
+                row.status = STATUS_ACCEPTABLE;
+              }
+              overlayStatus = row.status;
+            } else {
+              overlayStatus = 'no-pose';
+            }
+          }
+
+          drawOverlay(ctx, width, height, pose || null, overlayStatus, coreRisk);
+          if (videoTrack && typeof videoTrack.requestFrame === 'function') {
+            videoTrack.requestFrame();
+          }
+
+          csvRows.push(row);
+          updateProgress(frameIdx + 1, totalFrames);
+
+          // Yield to the event loop so UI updates and cancellation can happen.
+          if (frameIdx % 2 === 1) {
+            await new Promise((r) => requestAnimationFrame(r));
+          }
+        }
+
+        recorder.stop();
+        await recorderStopped;
+
+        if (isCancelled) {
+          throw new Error('Processing cancelled');
+        }
+
+        // Build outputs.
+        const videoBlob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
+        outputVideoBlobUrl = URL.createObjectURL(videoBlob);
+        outputVideo.src = outputVideoBlobUrl;
+        downloadVideoLink.href = outputVideoBlobUrl;
+        downloadVideoLink.download = 'annotated_video.webm';
+
+        const csvStringRows = buildCsvRows(csvRows);
+        const csvBlob = csvToBlob(csvStringRows);
+        outputCsvBlobUrl = URL.createObjectURL(csvBlob);
+        downloadCsvLink.href = outputCsvBlobUrl;
+        downloadCsvLink.download = 'risk_report.csv';
+
+        renderTable();
+        outputSection.classList.add('visible');
+      } catch (err) {
+        if (err.message === 'Processing cancelled') {
+          showError('Processing was cancelled by the user.');
+        } else {
+          showError(err.message || 'An unexpected error occurred while processing the video.');
+        }
+      } finally {
+        sourceVideo.pause();
+        sourceVideo.src = '';
+        URL.revokeObjectURL(url);
+        isProcessing = false;
+        setProcessingUi(false);
+      }
+    }
+
+    // --------------------------------------------------------------------------
+    // Table rendering
+    // --------------------------------------------------------------------------
+    function renderTable() {
+      const showAll = showAllFrames.checked;
+      const displayRows = showAll ? csvRows : csvRows.filter((r) => r.status === STATUS_RISKY);
+      const tbody = csvTable.querySelector('tbody');
+      tbody.innerHTML = '';
+
+      for (const row of displayRows) {
+        const tr = document.createElement('tr');
+        const values = [
+          row.frame,
+          row.time_sec,
+          row.is_moving ? 'True' : 'False',
+          row.knee_stiffness_risk.toFixed(4),
+          row.ankle_foot_alignment_risk.toFixed(4),
+          row.hip_displacement_proxy.toFixed(4),
+          row.landing_asymmetry_score.toFixed(4),
+          row.core_risk.toFixed(4),
+          row.status,
+        ];
+        values.forEach((val, i) => {
+          const td = document.createElement('td');
+          if (i === 8) {
+            const badge = document.createElement('span');
+            badge.className = `status-badge status-${row.status || 'no-pose'}`;
+            badge.textContent = val;
+            td.appendChild(badge);
+          } else {
+            td.textContent = val;
+          }
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      }
+
+      const riskyCount = csvRows.filter((r) => r.status === STATUS_RISKY).length;
+      summaryText.textContent = `Showing ${displayRows.length} ${showAll ? 'total' : 'risky'} of ${csvRows.length} frames`;
+    }
+
+    // --------------------------------------------------------------------------
+    // Event listeners
+    // --------------------------------------------------------------------------
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        selectedFile = files[0];
+        processBtn.disabled = false;
+        dropZone.querySelector('span').textContent = selectedFile.name;
+      }
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length > 0) {
+        selectedFile = fileInput.files[0];
+        processBtn.disabled = false;
+        dropZone.querySelector('span').textContent = selectedFile.name;
+      }
+    });
+
+    processBtn.addEventListener('click', () => {
+      if (!selectedFile) return;
+      processVideoFile(selectedFile);
+    });
+
+    cancelBtn.addEventListener('click', () => {
+      if (isProcessing) {
+        isCancelled = true;
+      }
+    });
+
+    showAllFrames.addEventListener('change', renderTable);
+
+    // Start loading MediaPipe eagerly so the first click is faster.
+    initPoseLandmarker().catch((err) => {
+      // Surface on first interaction.
+      console.error('MediaPipe preload failed', err);
+    });
+  </script>
+</body>
+</html>
