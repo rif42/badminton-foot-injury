@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
 import sys
 from typing import Any, Protocol, runtime_checkable
@@ -27,6 +28,7 @@ absl.logging.set_verbosity(absl.logging.ERROR)
 import mediapipe as mp  # noqa: E402
 
 from .baseline_risk import LowerBodyPose, Point, core_risk_score  # noqa: E402
+from .injury_descriptions import describe_critical_risks  # noqa: E402
 from .motion_gate import MotionGate  # noqa: E402
 
 
@@ -99,6 +101,14 @@ _SKELETON_CONNECTIONS: list[tuple[str, str]] = [
     ("right_heel", "right_foot_index"),
     ("left_hip", "right_hip"),
 ]
+
+# Popup shown on the top-right when a critical risk is detected.
+_POPUP_FONT_SCALE = 0.5
+_POPUP_FONT_THICKNESS = 1
+_POPUP_PADDING = 8
+_POPUP_LINE_SPACING = 6
+_POPUP_MARGIN = 10
+_POPUP_DISPLAY_SECONDS = 3.0
 
 DEFAULT_OUTPUT_CSV = "risk_report.csv"
 
@@ -261,6 +271,63 @@ def draw_pose_overlay(
     )
 
 
+def _draw_popup(
+    image: Any,
+    injuries: list[dict[str, object]],
+    color: tuple[int, int, int],
+) -> None:
+    """Draw a top-right popup listing the primary injury risks.
+
+    Args:
+        image: BGR OpenCV image to draw on (modified in place).
+        injuries: List of injury dictionaries from ``describe_critical_risks``.
+        color: BGR color tuple for the popup text.
+    """
+    if not injuries:
+        return
+
+    lines = ["CRITICAL RISK"]
+    for injury in injuries:
+        lines.append(str(injury["name"]))
+        lines.append(f"  {injury['short_description']}")
+
+    height, width = image.shape[:2]
+    max_text_width = 0
+    line_height = 0
+    for line in lines:
+        (text_width, text_height), _ = cv2.getTextSize(
+            line,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            _POPUP_FONT_SCALE,
+            _POPUP_FONT_THICKNESS,
+        )
+        max_text_width = max(max_text_width, text_width)
+        line_height = max(line_height, text_height)
+
+    total_text_height = line_height * len(lines) + _POPUP_LINE_SPACING * (
+        len(lines) - 1
+    )
+    box_width = max_text_width + 2 * _POPUP_PADDING
+    box_height = total_text_height + 2 * _POPUP_PADDING
+
+    top_left = (width - box_width - _POPUP_MARGIN, _POPUP_MARGIN)
+    bottom_right = (width - _POPUP_MARGIN, _POPUP_MARGIN + box_height)
+    cv2.rectangle(image, top_left, bottom_right, (0, 0, 0), -1)
+
+    y = top_left[1] + _POPUP_PADDING + line_height
+    for line in lines:
+        cv2.putText(
+            image,
+            line,
+            (top_left[0] + _POPUP_PADDING, y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            _POPUP_FONT_SCALE,
+            color,
+            _POPUP_FONT_THICKNESS,
+        )
+        y += line_height + _POPUP_LINE_SPACING
+
+
 def build_csv_rows(results: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Convert analysis result dictionaries to CSV-ready string rows.
 
@@ -295,6 +362,7 @@ def analyze_video(
     show_preview: bool = False,
     pose_detector: PoseDetector | None = None,
     webcam_index: int | None = None,
+    output_log: str | None = None,
 ) -> None:
     """Analyze a video and write a per-frame risk CSV report.
 
@@ -313,6 +381,8 @@ def analyze_video(
             ``_create_pose_detector()``.
         webcam_index: If provided, open the webcam at this index instead of
             ``input_path``. Webcam mode always shows a preview window.
+        output_log: Optional path to a JSON log of critical risk detections.
+            If ``None``, no log is produced.
 
     Raises:
         RuntimeError: If the input video/webcam or output video writer cannot
@@ -356,6 +426,11 @@ def analyze_video(
     results: list[dict[str, Any]] | None = [] if output_csv is not None else None
     frame_idx = 0
 
+    in_critical_segment = False
+    popup_frames_remaining = 0
+    popup_injuries: list[dict[str, object]] = []
+    critical_events: list[dict[str, Any]] = []
+
     try:
         while True:
             ret, frame = cap.read()
@@ -395,6 +470,27 @@ def analyze_video(
                     score = core_risk_score(pose_obj)
                     row.update(score)
                     row["status"] = _status(score["core_risk"])
+                    if row["status"] == _STATUS_RISKY:
+                        if not in_critical_segment:
+                            in_critical_segment = True
+                            popup_injuries = describe_critical_risks(score)
+                            popup_frames_remaining = int(
+                                round(fps * _POPUP_DISPLAY_SECONDS)
+                            )
+                            critical_events.append(
+                                {
+                                    "frame": frame_idx,
+                                    "time_sec": row["time_sec"],
+                                    "injuries": popup_injuries,
+                                }
+                            )
+                    else:
+                        in_critical_segment = False
+                else:
+                    in_critical_segment = False
+            else:
+                # No pose detected: reset any active critical segment.
+                in_critical_segment = False
 
             if results is not None:
                 results.append(row)
@@ -408,6 +504,11 @@ def analyze_video(
                         row["status"],
                         row["core_risk"],
                     )
+                    if popup_frames_remaining > 0:
+                        _draw_popup(display, popup_injuries, _COLOR_RISKY)
+                        popup_frames_remaining -= 1
+                        if popup_frames_remaining == 0:
+                            popup_injuries = []
                 else:
                     # No pose detected: show a neutral status badge only.
                     cv2.putText(
@@ -442,6 +543,10 @@ def analyze_video(
                 writer_csv = csv.DictWriter(f, fieldnames=rows[0].keys())
                 writer_csv.writeheader()
                 writer_csv.writerows(rows)
+
+    if output_log is not None:
+        with open(output_log, "w", encoding="utf-8") as f:
+            json.dump(critical_events, f, indent=2)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -485,6 +590,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Show live preview window.",
     )
+    parser.add_argument(
+        "--output-log",
+        default=None,
+        help="Path to a JSON log of critical risk detections.",
+    )
     args = parser.parse_args(argv)
 
     if args.webcam is None and args.input_video is None:
@@ -505,6 +615,7 @@ def main(argv: list[str] | None = None) -> int:
         args.output_video,
         args.show_preview,
         webcam_index=args.webcam,
+        output_log=args.output_log,
     )
     if output_csv:
         print(f"Wrote CSV report to {output_csv}")

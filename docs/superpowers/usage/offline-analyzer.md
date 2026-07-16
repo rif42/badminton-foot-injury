@@ -58,6 +58,9 @@ scripts\\run_analyzer.bat input.mp4 --output-csv report.csv
 
 - `--output-video annotated.mp4` — write an annotated side-by-side video.
 - `--show-preview` — display a live preview window while processing a file (preview is always on in webcam mode).
+- `--output-log critical_log.json` — write a JSON log of every critical (`risky`) detection, with timestamp, injury name, description, and prevention tip.
+
+When the risk reaches the critical level, a popup appears in the top-right corner of the annotated/preview video for 3 seconds naming the primary injury risk.
 
 ### Output CSV columns
 

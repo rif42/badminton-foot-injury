@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from unittest.mock import MagicMock, patch
 
 import cv2
@@ -450,6 +451,159 @@ def test_main_on_synthetic_video(tmp_path):
         reader = csv.DictReader(f)
         rows = list(reader)
     assert len(rows) == 30
+
+
+_DUMMY_POSE = LowerBodyPose(
+    left_hip=(100.0, 200.0, 0.0),
+    right_hip=(200.0, 200.0, 0.0),
+    left_knee=(150.0, 300.0, 0.0),
+    right_knee=(150.0, 300.0, 0.0),
+    left_ankle=(150.0, 400.0, 0.0),
+    right_ankle=(150.0, 400.0, 0.0),
+    left_heel=(140.0, 410.0, 0.0),
+    right_heel=(140.0, 410.0, 0.0),
+    left_foot_index=(160.0, 410.0, 0.0),
+    right_foot_index=(160.0, 410.0, 0.0),
+)
+
+_RISKY_SCORE = {
+    "knee_stiffness_risk": 0.0,
+    "ankle_foot_alignment_risk": 0.8,
+    "hip_displacement_proxy": 0.0,
+    "landing_asymmetry_score": 0.0,
+    "core_risk": 0.7,
+}
+
+
+def _write_blank_video(path, frames=30):
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(str(path), fourcc, 30.0, (640, 480))
+    for _ in range(frames):
+        writer.write(np.zeros((480, 640, 3), dtype=np.uint8))
+    writer.release()
+
+
+def test_main_writes_critical_log_on_risky_frame(tmp_path, monkeypatch):
+    """A risky frame produces a JSON log with the detected injury details."""
+    monkeypatch.chdir(tmp_path)
+    video_path = tmp_path / "test.mp4"
+    output_csv = tmp_path / "out.csv"
+    log_path = tmp_path / "critical_log.json"
+    _write_blank_video(video_path)
+
+    with (
+        patch(
+            "badminton_risk.video_risk_analyzer._extract_pose",
+            return_value=_DUMMY_POSE,
+        ),
+        patch("badminton_risk.video_risk_analyzer.MotionGate") as mock_gate_cls,
+        patch(
+            "badminton_risk.video_risk_analyzer.core_risk_score",
+            return_value=_RISKY_SCORE,
+        ),
+    ):
+        mock_gate = MagicMock()
+        mock_gate.update.return_value = "moving"
+        mock_gate_cls.return_value = mock_gate
+
+        main(
+            [
+                str(video_path),
+                "--output-csv",
+                str(output_csv),
+                "--output-log",
+                str(log_path),
+            ]
+        )
+
+    assert log_path.exists()
+    log = json.loads(log_path.read_text())
+    assert len(log) == 1
+    assert log[0]["frame"] == 0
+    assert log[0]["time_sec"] == 0.0
+    assert log[0]["injuries"][0]["component"] == "ankle_foot_alignment_risk"
+    assert "description" in log[0]["injuries"][0]
+    assert "prevention" in log[0]["injuries"][0]
+
+
+_ACCEPTABLE_SCORE = {
+    "knee_stiffness_risk": 0.0,
+    "ankle_foot_alignment_risk": 0.0,
+    "hip_displacement_proxy": 0.0,
+    "landing_asymmetry_score": 0.0,
+    "core_risk": 0.2,
+}
+
+
+def test_main_draws_popup_on_risky_frame(tmp_path, monkeypatch):
+    """A risky frame triggers the top-right popup overlay."""
+    monkeypatch.chdir(tmp_path)
+    video_path = tmp_path / "test.mp4"
+    output_video = tmp_path / "out.mp4"
+    _write_blank_video(video_path)
+
+    with (
+        patch(
+            "badminton_risk.video_risk_analyzer._extract_pose",
+            return_value=_DUMMY_POSE,
+        ),
+        patch("badminton_risk.video_risk_analyzer.MotionGate") as mock_gate_cls,
+        patch(
+            "badminton_risk.video_risk_analyzer.core_risk_score",
+            return_value=_RISKY_SCORE,
+        ),
+        patch("badminton_risk.video_risk_analyzer._draw_popup") as mock_draw_popup,
+    ):
+        mock_gate = MagicMock()
+        mock_gate.update.return_value = "moving"
+        mock_gate_cls.return_value = mock_gate
+
+        main([str(video_path), "--output-video", str(output_video)])
+
+    mock_draw_popup.assert_called()
+    args, _kwargs = mock_draw_popup.call_args
+    injuries = args[1]
+    assert injuries[0]["name"] == "Ankle sprain (ATFL tear)"
+
+
+def test_main_popup_persists_after_short_risky_segment(tmp_path, monkeypatch):
+    """A short risky segment keeps the popup visible for at least 3 seconds."""
+    monkeypatch.chdir(tmp_path)
+    video_path = tmp_path / "test.mp4"
+    output_video = tmp_path / "out.mp4"
+    _write_blank_video(video_path, frames=120)
+
+    def _score_side_effect():
+        count = 0
+        def _inner(_pose):
+            nonlocal count
+            if count == 0:
+                count += 1
+                return _RISKY_SCORE
+            return _ACCEPTABLE_SCORE
+        return _inner
+
+    with (
+        patch(
+            "badminton_risk.video_risk_analyzer._extract_pose",
+            return_value=_DUMMY_POSE,
+        ),
+        patch("badminton_risk.video_risk_analyzer.MotionGate") as mock_gate_cls,
+        patch(
+            "badminton_risk.video_risk_analyzer.core_risk_score",
+            side_effect=_score_side_effect(),
+        ),
+        patch("badminton_risk.video_risk_analyzer._draw_popup") as mock_draw_popup,
+    ):
+        mock_gate = MagicMock()
+        mock_gate.update.return_value = "moving"
+        mock_gate_cls.return_value = mock_gate
+
+        main([str(video_path), "--output-video", str(output_video)])
+
+    # 30 fps * 3 seconds = 90 frames.
+    assert mock_draw_popup.call_count >= 90
+
 
 
 def test_main_requires_input_or_webcam():
