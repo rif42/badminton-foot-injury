@@ -4,13 +4,13 @@
 Create a Python script that reads the user's webcam, runs a MediaPipe pose-detection model, and displays a live window with the lower-body skeleton overlay (hips, thighs, knees, ankles, heels, toes). No injury-risk logic is included in this version; the structure should make it easy to add later.
 
 ## Context
-This is part of the `badminton-foot-injury` project. The file `injury.md` already defines biomechanical thresholds that will eventually be computed from these landmarks. The webcam script is the first step toward capturing the required landmark data.
+This is part of the `badminton-foot-injury` project. The file `../../../.mindmodel/plans/injury.md` already defines biomechanical thresholds that will eventually be computed from these landmarks. The webcam script is the first step toward capturing the required landmark data.
 
 ## Selected Approach
 **Option B: Small `PoseDetector` class.**
 - A reusable class wraps MediaPipe Pose initialization, frame processing, and landmark drawing.
 - `main()` handles OpenCV camera I/O.
-- This keeps the landmark-extraction logic isolated so injury-risk calculations from `injury.md` can be added later without rewriting the capture loop.
+- This keeps the landmark-extraction logic isolated so injury-risk calculations from `../../../.mindmodel/plans/injury.md` can be added later without rewriting the capture loop.
 
 ## Components
 

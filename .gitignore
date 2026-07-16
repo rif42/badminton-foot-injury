@@ -1,8 +1,14 @@
 /node_modules
 /.venv
 /__pycache__
+/.pytest_cache
+/.ruff_cache
 /.worktrees
 
 # Generated risk reports
 report.csv
 *_report.csv
+/data/results/
+/data/examples/*.csv
+/data/examples/*_annotated.mp4
+*.pyc

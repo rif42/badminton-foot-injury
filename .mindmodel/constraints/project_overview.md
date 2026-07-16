@@ -11,14 +11,20 @@ Real-time lower-body pose detection from a webcam using MediaPipe Pose + OpenCV,
 ## Package Layout
 ```
 badminton-foot-injury/
-├── webcam_leg_pose_detector.py      # Pose capture + landmark extraction
-├── test_webcam_leg_pose_detector.py # Unit tests (mocked)
-├── injury.md                        # Biomechanical thresholds (authoritative reference)
-├── research_badminton_injury_params/  # Research findings & parameters
-│   ├── research_plan.md             # Research plan
-│   └── findings_*.md                # Per-parameter evidence
-├── docs/superpowers/specs/          # Design specs
-└── .mindmodel/constraints/         # This directory
+├── src/badminton_risk/               # Python package
+│   ├── baseline_risk.py              # Core geometry + risk scoring
+│   ├── injury_risk.py                # Profile-based risk model
+│   ├── motion_gate.py                # Moving/standing gate
+│   ├── risk_overlay.py               # OpenCV HUD renderer
+│   ├── video_risk_analyzer.py        # Offline/webcam analyzer CLI
+│   └── webcam_leg_pose_detector.py   # Live webcam pose detector
+├── tests/                            # Unit tests (mirror src modules)
+├── scripts/                          # Batch runners
+├── data/                             # Input videos, datasets, outputs
+├── web/                              # HTML/JS sandbox
+├── docs/                             # Docs and specs
+├── .mindmodel/                       # Constraints and plans
+└── .mindmodel/plans/injury.md        # Biomechanical thresholds (authoritative reference)
 ```
 
 ## Dependency Import Order

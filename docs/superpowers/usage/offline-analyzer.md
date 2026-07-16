@@ -8,7 +8,7 @@ Analyze a badminton lower-body injury-risk pattern from a recorded video file or
 - MediaPipe
 - OpenCV
 - NumPy
-- `baseline_risk.py` and `motion_gate.py` must be present in the same directory (they are imported by `video_risk_analyzer.py`)
+- `baseline_risk.py` and `motion_gate.py` live in the `badminton_risk` package under `src/badminton_risk/` (they are imported by `video_risk_analyzer.py`).
 
 ### Input format
 
@@ -17,13 +17,13 @@ The analyzer accepts any video format that OpenCV `VideoCapture` can read, such 
 ### Run
 
 ```bash
-python video_risk_analyzer.py input.mp4
+python -m badminton_risk.video_risk_analyzer input.mp4
 ```
 
 The default output CSV filename is `risk_report.csv`. To specify a different file:
 
 ```bash
-python video_risk_analyzer.py input.mp4 --output-csv report.csv
+python -m badminton_risk.video_risk_analyzer input.mp4 --output-csv report.csv
 ```
 
 ### Webcam mode
@@ -31,19 +31,19 @@ python video_risk_analyzer.py input.mp4 --output-csv report.csv
 Analyze a live webcam feed instead of a file:
 
 ```bash
-python video_risk_analyzer.py --webcam
+python -m badminton_risk.video_risk_analyzer --webcam
 ```
 
 Use a specific camera index:
 
 ```bash
-python video_risk_analyzer.py --webcam 1
+python -m badminton_risk.video_risk_analyzer --webcam 1
 ```
 
 Webcam mode shows a live preview window and writes no files by default. Press `q` to quit. To record the session, provide the usual output flags:
 
 ```bash
-python video_risk_analyzer.py --webcam --output-csv live_report.csv --output-video live_annotated.mp4
+python -m badminton_risk.video_risk_analyzer --webcam --output-csv live_report.csv --output-video live_annotated.mp4
 ```
 
 ### Windows batch shortcut
@@ -51,7 +51,7 @@ python video_risk_analyzer.py --webcam --output-csv live_report.csv --output-vid
 On Windows, use the provided `run_analyzer.bat` to automatically activate the virtual environment and forward all arguments:
 
 ```bat
-run_analyzer.bat input.mp4 --output-csv report.csv
+scripts\\run_analyzer.bat input.mp4 --output-csv report.csv
 ```
 
 ### Optional flags

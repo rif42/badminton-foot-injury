@@ -1,7 +1,7 @@
 # Architecture Constraints
 
 ## Module Organization
-- Each functional area lives in its own top-level `.py` module (e.g., `webcam_leg_pose_detector.py`).
+- Each functional area lives in its own module inside the `badminton_risk` package (`src/badminton_risk/`).
 - Modules are **importable standalone** — no module should fail to import if external services (camera, MediaPipe model) are unavailable.
 - A dedicated research/injury-scoring subdirectory (`research_badminton_injury_params/`) holds parameter definitions and findings, separate from runtime code.
 

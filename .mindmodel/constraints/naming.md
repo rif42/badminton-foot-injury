@@ -1,8 +1,8 @@
 # Naming Conventions
 
 ## Files
-- Python source modules: `snake_case.py` (e.g., `webcam_leg_pose_detector.py`)
-- Test modules: mirror source name with `_test_` suffix or co-located in same directory
+- Python source modules: `snake_case.py` inside `src/badminton_risk/`
+- Test modules: mirror source name with `_test_` suffix in `tests/`
 - Constants and configuration data files: snake_case with `.md` extension (e.g., `findings_foot_alignment.md`)
 
 ## Python Identifiers

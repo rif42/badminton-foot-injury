@@ -1,6 +1,6 @@
 # Live Injury-Risk Calculation for MediaPipe Pose
 
-**Goal:** Add real-time injury-risk scoring to the existing webcam lower-body pose detector, using the weighted profile model from `injury-sim.html` and the biomechanical parameters documented in `injury.md`.
+**Goal:** Add real-time injury-risk scoring to the existing webcam lower-body pose detector, using the weighted profile model from `injury-sim.html` and the biomechanical parameters documented in `../../../.mindmodel/plans/injury.md`.
 
 **Architecture:** Keep `PoseDetector` responsible only for MediaPipe landmark extraction. Introduce a dedicated `injury_risk.py` module that converts landmarks into biomechanical parameters, runs the profile-based risk model, and smooths the output. Introduce `risk_overlay.py` to render the score and alerts on the OpenCV feed. The existing `webcam_leg_pose_detector.py` orchestrates the frame loop and forwards landmarks to the risk/overlay modules.
 
@@ -11,7 +11,7 @@
 ## Context
 
 - `webcam_leg_pose_detector.py` already exposes live MediaPipe Pose landmarks for the lower body (hips, knees, ankles, heels, foot indices) and draws the skeleton.
-- `injury.md` defines the biomechanical parameters and safe/dangerous thresholds.
+- `../../../.mindmodel/plans/injury.md` defines the biomechanical parameters and safe/dangerous thresholds.
 - `injury-sim.html` implements a weighted risk model with three profiles (`conservative`, `balanced`, `aggressive`), piecewise curves per parameter, interaction bonuses, and a 0-100 total risk score.
 - `research_badminton_injury_params/` provides evidence supporting the four parameters and their interactions.
 
@@ -51,12 +51,12 @@
 
 ## Parameter Mapping Notes
 
-The four live parameters are mapped from landmarks to match the intent of `injury.md` and the structure of the `injury-sim.html` model. They are first approximations and can be refined with real-world testing:
+The four live parameters are mapped from landmarks to match the intent of `../../../.mindmodel/plans/injury.md` and the structure of the `injury-sim.html` model. They are first approximations and can be refined with real-world testing:
 
 - `hip_trajectory_deviation` replaces the simulation’s `hipTrajectory` slider with a real CoM-trajectory deviation measurement.
 - `knee_flexion` is the internal knee angle; a straighter leg gives a larger angle and higher risk, consistent with the research findings on stiff landings.
-- `foot_alignment` is the foot-to-trajectory alignment described in `injury.md`.
-- `landing_pitch` matches the foot-strike pitch angle in `injury.md`.
+- `foot_alignment` is the foot-to-trajectory alignment described in `../../../.mindmodel/plans/injury.md`.
+- `landing_pitch` matches the foot-strike pitch angle in `../../../.mindmodel/plans/injury.md`.
 
 ---
 

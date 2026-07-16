@@ -13,7 +13,7 @@ No live webcam, no event classifier, no public datasets, and no fatigue tracking
 - Command-line tool that reads a video file.
 - MediaPipe Pose lower-body landmark extraction.
 - Simple moving/standing gate based on hip-center motion.
-- Risk scoring using the four core parameters from `badminton_lower_body_injury_baseline_updated.md`:
+- Risk scoring using the four core parameters from `../../../.mindmodel/plans/badminton_lower_body_injury_baseline_updated.md`:
   - `Knee_Flexion_Angle`
   - `Ankle_Foot_Alignment_Risk`
   - `Hip_Displacement_Proxy`

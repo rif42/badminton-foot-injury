@@ -93,7 +93,7 @@ LB_LANDMARKS            # too abbreviated
 CONN_LIST               # vague, not self-documenting
 ```
 
-## Threshold/Parameter Naming (injury.md)
+## Threshold/Parameter Naming (plans/injury.md)
 
 Biomechanical parameters use descriptive names reflecting their physical meaning:
 

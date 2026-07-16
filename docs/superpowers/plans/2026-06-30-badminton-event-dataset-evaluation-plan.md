@@ -15,8 +15,8 @@
 I read the three reference files:
 
 - `badminton_injury_sandbox_v2.html`
-- `badminton_lower_body_injury_baseline_updated.md`
-- `public_datasets_for_badminton_event_classifier.md`
+- `../../../.mindmodel/plans/badminton_lower_body_injury_baseline_updated.md`
+- `../../../.mindmodel/plans/public_datasets_for_badminton_event_classifier.md`
 
 ### 1.1 Parameters checked in the sandbox
 
@@ -134,7 +134,7 @@ right_foot_index
 
 ## 3. Candidate Dataset Inventory
 
-All datasets come from `public_datasets_for_badminton_event_classifier.md`. They are grouped into tiers based on likely usefulness.
+All datasets come from `../../../.mindmodel/plans/public_datasets_for_badminton_event_classifier.md`. They are grouped into tiers based on likely usefulness.
 
 ### 3.1 Tier 1 — Primary badminton event data
 
@@ -206,7 +206,7 @@ Create a table with these columns:
 
 - [ ] **Step 2: Populate known entries**
 
-Add all datasets from Section 3 with whatever URL/license information is already known from `public_datasets_for_badminton_event_classifier.md`.
+Add all datasets from Section 3 with whatever URL/license information is already known from `../../../.mindmodel/plans/public_datasets_for_badminton_event_classifier.md`.
 
 ---
 

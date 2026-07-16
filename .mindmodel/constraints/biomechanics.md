@@ -1,6 +1,6 @@
 # Biomechanical Parameter Constraints
 
-## Injury Risk Model (from `injury.md`)
+## Injury Risk Model (from `../plans/injury.md`)
 
 The project classifies badminton footwork as **safe** or **dangerous** based on five biomechanical parameters, each with a "correct" range and a dangerous threshold. All thresholds are derived from published research.
 
@@ -32,4 +32,4 @@ The project classifies badminton footwork as **safe** or **dangerous** based on 
 ## Threshold Implementation Rules
 - Every biomechanical parameter must be computed from MediaPipe landmarks, never hardcoded.
 - Parameters are independent measurements — each can flag dangerous mechanics on its own, but the **combined risk model** (future work) will weigh them together.
-- All threshold values in `injury.md` are treated as authoritative references; any change requires citation of updated research evidence.
+- All threshold values in `../plans/injury.md` are treated as authoritative references; any change requires citation of updated research evidence.

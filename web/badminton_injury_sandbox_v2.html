@@ -1,0 +1,1083 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Badminton Lower-Body Injury-Risk 3D Sandbox</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #101318;
+      --panel: #181d25;
+      --panel2: #222936;
+      --text: #e9eef7;
+      --muted: #aeb8c8;
+      --accent: #64d2ff;
+      --warn: #ffca5f;
+      --bad: #ff6b6b;
+      --good: #73e29c;
+      --line: #364052;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+    #app {
+      display: grid;
+      grid-template-columns: minmax(520px, 1fr) 420px;
+      height: 100%;
+    }
+    #scene {
+      position: relative;
+      min-width: 0;
+    }
+    #scene canvas { display:block; }
+    #hud {
+      position: absolute;
+      left: 16px;
+      top: 16px;
+      padding: 10px 12px;
+      background: rgba(16,19,24,0.74);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      max-width: 520px;
+      backdrop-filter: blur(8px);
+    }
+    #side {
+      overflow: auto;
+      padding: 18px;
+      background: linear-gradient(180deg, var(--panel), #11151c);
+      border-left: 1px solid var(--line);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 20px;
+      line-height: 1.2;
+    }
+    h2 {
+      margin: 18px 0 8px;
+      font-size: 14px;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    p {
+      margin: 6px 0 10px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .card {
+      background: rgba(255,255,255,0.045);
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 14px;
+      padding: 12px;
+      margin: 12px 0;
+    }
+    label {
+      display: block;
+      margin: 10px 0 6px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    select, input[type="range"], button {
+      width: 100%;
+    }
+    select, button {
+      color: var(--text);
+      background: var(--panel2);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      padding: 9px 10px;
+      font: inherit;
+    }
+    button {
+      cursor: pointer;
+      margin: 5px 0;
+      text-align: left;
+    }
+    button:hover {
+      border-color: var(--accent);
+    }
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .slider-row {
+      display: grid;
+      grid-template-columns: 24px 1fr 52px;
+      align-items: center;
+      gap: 8px;
+      margin: 6px 0;
+    }
+    .slider-row span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .metric {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: baseline;
+      padding: 7px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      font-size: 13px;
+    }
+    .metric:last-child { border-bottom: none; }
+    .metric b { color: var(--text); font-weight: 600; }
+    .metric em { color: var(--muted); font-style: normal; }
+    .bar {
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.12);
+      overflow: hidden;
+      margin: 5px 0 8px;
+    }
+    .fill {
+      height: 100%;
+      width: 0%;
+      background: var(--good);
+      transition: width .15s ease, background .15s ease;
+    }
+    .status {
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-weight: 700;
+      text-align: center;
+      background: rgba(115,226,156,0.14);
+      border: 1px solid rgba(115,226,156,0.28);
+      color: var(--good);
+    }
+    .small {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    code {
+      color: #d8eaff;
+      background: rgba(255,255,255,0.06);
+      border-radius: 5px;
+      padding: 1px 4px;
+    }
+    .legend {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .dot {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: -1px;
+    }
+    .warnbox {
+      border-left: 3px solid var(--warn);
+      padding: 8px 10px;
+      background: rgba(255,202,95,0.08);
+      color: var(--muted);
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    @media (max-width: 920px) {
+      #app { grid-template-columns: 1fr; grid-template-rows: 55vh 45vh; }
+      #side { border-left: none; border-top: 1px solid var(--line); }
+    }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+<div id="app">
+  <div id="scene">
+    <div id="hud">
+      <b>3D lower-body sandbox</b><br/>
+      Click a joint sphere, then drag the XYZ gizmo to move it. Use mouse wheel to zoom and right-drag to pan.<br/>
+      Coordinate convention: <code>X = left/right</code>, <code>Y = vertical</code>, <code>Z = forward/back</code>.
+    </div>
+  </div>
+
+  <aside id="side">
+    <h1>Badminton Injury-Risk Sandbox</h1>
+    <p>Educational geometry simulator for lower-body pose features. It is not a medical model and not a force-plate simulation.</p>
+
+    <div class="card">
+      <div id="status" class="status">No Event / Low Concern</div>
+      <div class="bar"><div id="riskFill" class="fill"></div></div>
+      <div class="small">Final risk score: <b id="finalRisk">0</b>/100</div>
+    </div>
+
+    <h2>Movement Context</h2>
+    <div class="card">
+      <label>Event type</label>
+      <select id="eventType">
+        <option value="no_event">no_event / standing</option>
+        <option value="lunge">lunge</option>
+        <option value="jump_landing">jump landing</option>
+        <option value="direction_change">directional change</option>
+      </select>
+
+      <label>Support side</label>
+      <select id="supportSide">
+        <option value="right">right</option>
+        <option value="left">left</option>
+      </select>
+
+      <label>Impact speed proxy <span id="impactSpeedLabel">0.40</span></label>
+      <input id="impactSpeed" type="range" min="0" max="1" step="0.01" value="0.40" />
+
+      <label>Deceleration proxy <span id="decelLabel">0.40</span></label>
+      <input id="decel" type="range" min="0" max="1" step="0.01" value="0.40" />
+
+      <label>Wobble / recovery instability <span id="wobbleLabel">0.20</span></label>
+      <input id="wobble" type="range" min="0" max="1" step="0.01" value="0.20" />
+
+      <label>Fatigue modifier <span id="fatigueLabel">0.10</span></label>
+      <input id="fatigue" type="range" min="0" max="1" step="0.01" value="0.10" />
+    </div>
+
+    <h2>Selected Joint</h2>
+    <div class="card">
+      <label>Joint</label>
+      <select id="jointSelect"></select>
+      <div class="slider-row"><span>X</span><input id="xSlider" type="range" min="-1.5" max="1.5" step="0.01"><span id="xVal"></span></div>
+      <div class="slider-row"><span>Y</span><input id="ySlider" type="range" min="0.0" max="2.2" step="0.01"><span id="yVal"></span></div>
+      <div class="slider-row"><span>Z</span><input id="zSlider" type="range" min="-1.5" max="1.5" step="0.01"><span id="zVal"></span></div>
+    </div>
+
+    <h2>Presets</h2>
+    <div class="card">
+      <p class="small"><b>Good patterns</b></p>
+      <div class="grid2">
+        <button data-preset="neutral">Neutral stance</button>
+        <button data-preset="good_split_step_soft">Good split step</button>
+        <button data-preset="good_right_lunge">Good right lunge</button>
+        <button data-preset="good_left_lunge">Good left lunge</button>
+        <button data-preset="good_jump_landing_soft">Good soft landing</button>
+        <button data-preset="good_direction_change">Good direction change</button>
+      </div>
+
+      <p class="small" style="margin-top:14px;"><b>Risky patterns</b></p>
+      <div class="grid2">
+        <button data-preset="risky_right_knee_valgus_lunge">Risky right knee inward</button>
+        <button data-preset="risky_left_knee_valgus_lunge">Risky left knee inward</button>
+        <button data-preset="risky_toe_in_landing">Risky toe-in landing</button>
+        <button data-preset="risky_overreach_lunge">Risky overreach lunge</button>
+        <button data-preset="risky_pelvis_shift_direction_change">Risky pelvis shift</button>
+        <button data-preset="risky_stiff_jump_landing">Risky stiff landing</button>
+        <button data-preset="risky_asymmetric_landing">Risky asymmetry</button>
+      </div>
+
+      <p class="small" style="margin-top:14px;"><b>Catastrophic stress tests</b></p>
+      <div class="grid2">
+        <button data-preset="catastrophic_knee_collapse_right_lunge">Extreme knee collapse</button>
+        <button data-preset="catastrophic_crossed_feet_landing">Extreme crossed feet</button>
+        <button data-preset="catastrophic_extreme_overreach_lunge">Extreme overreach</button>
+        <button data-preset="catastrophic_ankle_roll_proxy_right">Extreme ankle roll proxy</button>
+        <button data-preset="catastrophic_one_leg_drop_asymmetry">Extreme asymmetry drop</button>
+        <button data-preset="reset">Reset</button>
+      </div>
+    </div>
+
+    <h2>Real-Time Parameters</h2>
+    <div class="card" id="metrics"></div>
+
+    <h2>Notes</h2>
+    <div class="warnbox">
+      <b>Accuracy warning:</b> this sandbox calculates geometric proxies from idealized 3D points.
+      It can demonstrate the detection algorithm, but it cannot validate real injury risk without real video,
+      event labels, camera calibration, and ideally clinical/sports-science review. The catastrophic presets are intentionally exaggerated stress tests.
+    </div>
+
+    <div class="legend">
+      <span><span class="dot" style="background:#73e29c"></span>hips</span>
+      <span><span class="dot" style="background:#64d2ff"></span>knees</span>
+      <span><span class="dot" style="background:#ffca5f"></span>ankles</span>
+      <span><span class="dot" style="background:#ff8ad8"></span>heel/toe</span>
+    </div>
+  </aside>
+</div>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { TransformControls } from "three/addons/controls/TransformControls.js";
+
+const container = document.getElementById("scene");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.setClearColor(0x101318, 1);
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, container.clientWidth / container.clientHeight, 0.01, 100);
+camera.position.set(2.6, 2.1, 3.2);
+
+const orbit = new OrbitControls(camera, renderer.domElement);
+orbit.target.set(0, 0.95, 0);
+orbit.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x222244, 2.2));
+const light = new THREE.DirectionalLight(0xffffff, 1.2);
+light.position.set(3, 5, 2);
+scene.add(light);
+
+const grid = new THREE.GridHelper(4, 20, 0x526070, 0x27303d);
+grid.position.y = 0;
+scene.add(grid);
+
+const axes = new THREE.AxesHelper(1.2);
+axes.position.set(-1.8, 0.02, -1.8);
+scene.add(axes);
+
+const defaultPose = {
+  left_hip:  [-0.22, 1.35, 0.00],
+  right_hip: [ 0.22, 1.35, 0.00],
+  left_knee: [-0.22, 0.76, 0.02],
+  right_knee:[ 0.22, 0.76, 0.02],
+  left_ankle:[-0.22, 0.10, 0.00],
+  right_ankle:[0.22, 0.10, 0.00],
+  left_heel: [-0.24, 0.03, -0.12],
+  right_heel:[0.20, 0.03, -0.12],
+  left_foot_index: [-0.24, 0.03, 0.22],
+  right_foot_index:[0.20, 0.03, 0.22],
+};
+
+const presets = {
+  neutral: defaultPose,
+  reset: defaultPose,
+
+  // -----------------------------
+  // GOOD / ACCEPTABLE PATTERNS
+  // -----------------------------
+  good_right_lunge: {
+    left_hip:  [-0.20, 1.22, -0.18],
+    right_hip: [ 0.24, 1.18,  0.02],
+    left_knee: [-0.25, 0.72, -0.10],
+    right_knee:[ 0.25, 0.52,  0.48],
+    left_ankle:[-0.27, 0.10, -0.18],
+    right_ankle:[0.25, 0.10, 0.90],
+    left_heel: [-0.30, 0.03, -0.30],
+    right_heel:[0.23, 0.03, 0.76],
+    left_foot_index: [-0.28, 0.03, 0.08],
+    right_foot_index:[0.28, 0.03, 1.16],
+  },
+  good_left_lunge: {
+    left_hip:  [-0.24, 1.18,  0.02],
+    right_hip: [ 0.20, 1.22, -0.18],
+    left_knee: [-0.25, 0.52,  0.48],
+    right_knee:[ 0.25, 0.72, -0.10],
+    left_ankle:[-0.25, 0.10, 0.90],
+    right_ankle:[0.27, 0.10, -0.18],
+    left_heel: [-0.23, 0.03, 0.76],
+    right_heel:[0.30, 0.03, -0.30],
+    left_foot_index: [-0.28, 0.03, 1.16],
+    right_foot_index:[0.28, 0.03, 0.08],
+  },
+  good_split_step_soft: {
+    left_hip:  [-0.25, 1.28, 0.00],
+    right_hip: [ 0.25, 1.28, 0.00],
+    left_knee: [-0.31, 0.70, 0.08],
+    right_knee:[ 0.31, 0.70, 0.08],
+    left_ankle:[-0.36, 0.10, 0.12],
+    right_ankle:[0.36, 0.10, 0.12],
+    left_heel: [-0.39, 0.03, -0.03],
+    right_heel:[0.33, 0.03, -0.03],
+    left_foot_index: [-0.35, 0.03, 0.32],
+    right_foot_index:[0.37, 0.03, 0.32],
+  },
+  good_jump_landing_soft: {
+    left_hip:  [-0.25, 1.16, 0.00],
+    right_hip: [ 0.25, 1.16, 0.00],
+    left_knee: [-0.30, 0.58, 0.10],
+    right_knee:[ 0.30, 0.58, 0.10],
+    left_ankle:[-0.32, 0.10, 0.08],
+    right_ankle:[0.32, 0.10, 0.08],
+    left_heel: [-0.35, 0.03, -0.08],
+    right_heel:[0.29, 0.03, -0.08],
+    left_foot_index: [-0.32, 0.03, 0.28],
+    right_foot_index:[0.33, 0.03, 0.28],
+  },
+  good_direction_change: {
+    left_hip:  [-0.18, 1.20, -0.06],
+    right_hip: [ 0.27, 1.17,  0.02],
+    left_knee: [-0.23, 0.66, -0.02],
+    right_knee:[ 0.33, 0.56,  0.18],
+    left_ankle:[-0.26, 0.10, -0.04],
+    right_ankle:[0.36, 0.10, 0.28],
+    left_heel: [-0.30, 0.03, -0.18],
+    right_heel:[0.32, 0.03, 0.12],
+    left_foot_index: [-0.22, 0.03, 0.17],
+    right_foot_index:[0.42, 0.03, 0.47],
+  },
+
+  // Backward-compatible names from the first version.
+  good_lunge: {
+    left_hip:  [-0.20, 1.22, -0.18],
+    right_hip: [ 0.24, 1.18,  0.02],
+    left_knee: [-0.25, 0.72, -0.10],
+    right_knee:[ 0.25, 0.52,  0.48],
+    left_ankle:[-0.27, 0.10, -0.18],
+    right_ankle:[0.25, 0.10, 0.90],
+    left_heel: [-0.30, 0.03, -0.30],
+    right_heel:[0.23, 0.03, 0.76],
+    left_foot_index: [-0.28, 0.03, 0.08],
+    right_foot_index:[0.28, 0.03, 1.16],
+  },
+
+  // -----------------------------
+  // RISKY PATTERNS
+  // -----------------------------
+  risky_right_knee_valgus_lunge: {
+    left_hip:  [-0.20, 1.22, -0.18],
+    right_hip: [ 0.24, 1.18,  0.02],
+    left_knee: [-0.25, 0.72, -0.10],
+    right_knee:[-0.07, 0.54,  0.48],
+    left_ankle:[-0.27, 0.10, -0.18],
+    right_ankle:[0.28, 0.10, 0.90],
+    left_heel: [-0.30, 0.03, -0.30],
+    right_heel:[0.25, 0.03, 0.76],
+    left_foot_index: [-0.28, 0.03, 0.08],
+    right_foot_index:[0.36, 0.03, 1.15],
+  },
+  risky_left_knee_valgus_lunge: {
+    left_hip:  [-0.24, 1.18,  0.02],
+    right_hip: [ 0.20, 1.22, -0.18],
+    left_knee: [0.07, 0.54,  0.48],
+    right_knee:[ 0.25, 0.72, -0.10],
+    left_ankle:[-0.28, 0.10, 0.90],
+    right_ankle:[0.27, 0.10, -0.18],
+    left_heel: [-0.25, 0.03, 0.76],
+    right_heel:[0.30, 0.03, -0.30],
+    left_foot_index: [-0.36, 0.03, 1.15],
+    right_foot_index:[0.28, 0.03, 0.08],
+  },
+  risky_toe_in_landing: {
+    left_hip:  [-0.25, 1.18, 0.00],
+    right_hip: [ 0.25, 1.18, 0.00],
+    left_knee: [-0.29, 0.60, 0.08],
+    right_knee:[ 0.29, 0.60, 0.08],
+    left_ankle:[-0.32, 0.10, 0.08],
+    right_ankle:[0.32, 0.10, 0.08],
+    left_heel: [-0.39, 0.03, -0.07],
+    right_heel:[0.39, 0.03, -0.07],
+    left_foot_index: [-0.08, 0.03, 0.24],
+    right_foot_index:[0.08, 0.03, 0.24],
+  },
+  risky_overreach_lunge: {
+    left_hip:  [-0.18, 1.28, -0.35],
+    right_hip: [ 0.22, 1.24, -0.25],
+    left_knee: [-0.25, 0.70, -0.10],
+    right_knee:[ 0.30, 0.50,  0.62],
+    left_ankle:[-0.28, 0.10, -0.22],
+    right_ankle:[0.34, 0.10, 1.25],
+    left_heel: [-0.32, 0.03, -0.38],
+    right_heel:[0.30, 0.03, 1.08],
+    left_foot_index: [-0.25, 0.03, -0.02],
+    right_foot_index:[0.42, 0.03, 1.52],
+  },
+  risky_pelvis_shift_direction_change: {
+    left_hip:  [-0.10, 1.23, -0.05],
+    right_hip: [ 0.38, 1.16,  0.04],
+    left_knee: [-0.20, 0.70,  0.00],
+    right_knee:[ 0.60, 0.56,  0.22],
+    left_ankle:[-0.28, 0.10, -0.04],
+    right_ankle:[0.36, 0.10, 0.28],
+    left_heel: [-0.31, 0.03, -0.18],
+    right_heel:[0.32, 0.03, 0.12],
+    left_foot_index: [-0.22, 0.03, 0.17],
+    right_foot_index:[0.45, 0.03, 0.47],
+  },
+  risky_stiff_jump_landing: {
+    left_hip:  [-0.22, 1.42, 0.00],
+    right_hip: [ 0.22, 1.42, 0.00],
+    left_knee: [-0.22, 0.82, 0.02],
+    right_knee:[ 0.22, 0.82, 0.02],
+    left_ankle:[-0.22, 0.10, 0.00],
+    right_ankle:[0.22, 0.10, 0.00],
+    left_heel: [-0.24, 0.03, -0.12],
+    right_heel:[0.20, 0.03, -0.12],
+    left_foot_index: [-0.24, 0.03, 0.22],
+    right_foot_index:[0.20, 0.03, 0.22],
+  },
+  risky_asymmetric_landing: {
+    left_hip:  [-0.25, 1.18, -0.03],
+    right_hip: [ 0.25, 1.34, 0.02],
+    left_knee: [-0.28, 0.47, 0.12],
+    right_knee:[ 0.22, 0.86, 0.02],
+    left_ankle:[-0.30, 0.10, 0.15],
+    right_ankle:[0.22, 0.16, 0.00],
+    left_heel: [-0.35, 0.03, 0.02],
+    right_heel:[0.20, 0.08, -0.12],
+    left_foot_index: [-0.30, 0.03, 0.42],
+    right_foot_index:[0.21, 0.08, 0.22],
+  },
+
+  // Backward-compatible names from the first version.
+  knee_inward: {
+    left_hip:  [-0.20, 1.22, -0.18],
+    right_hip: [ 0.24, 1.18,  0.02],
+    left_knee: [-0.25, 0.72, -0.10],
+    right_knee:[-0.07, 0.54,  0.48],
+    left_ankle:[-0.27, 0.10, -0.18],
+    right_ankle:[0.28, 0.10, 0.90],
+    left_heel: [-0.30, 0.03, -0.30],
+    right_heel:[0.25, 0.03, 0.76],
+    left_foot_index: [-0.28, 0.03, 0.08],
+    right_foot_index:[0.36, 0.03, 1.15],
+  },
+  stiff_landing: {
+    left_hip:  [-0.22, 1.42, 0.00],
+    right_hip: [ 0.22, 1.42, 0.00],
+    left_knee: [-0.22, 0.82, 0.02],
+    right_knee:[ 0.22, 0.82, 0.02],
+    left_ankle:[-0.22, 0.10, 0.00],
+    right_ankle:[0.22, 0.10, 0.00],
+    left_heel: [-0.24, 0.03, -0.12],
+    right_heel:[0.20, 0.03, -0.12],
+    left_foot_index: [-0.24, 0.03, 0.22],
+    right_foot_index:[0.20, 0.03, 0.22],
+  },
+  asymmetry: {
+    left_hip:  [-0.25, 1.18, -0.03],
+    right_hip: [ 0.25, 1.34, 0.02],
+    left_knee: [-0.28, 0.47, 0.12],
+    right_knee:[ 0.22, 0.86, 0.02],
+    left_ankle:[-0.30, 0.10, 0.15],
+    right_ankle:[0.22, 0.16, 0.00],
+    left_heel: [-0.35, 0.03, 0.02],
+    right_heel:[0.20, 0.08, -0.12],
+    left_foot_index: [-0.30, 0.03, 0.42],
+    right_foot_index:[0.21, 0.08, 0.22],
+  },
+
+  // -----------------------------
+  // CATASTROPHIC / EXTREME TEST PATTERNS
+  // These are intentionally exaggerated to stress-test the scoring logic.
+  // They are not medical predictions.
+  // -----------------------------
+  catastrophic_knee_collapse_right_lunge: {
+    left_hip:  [-0.18, 1.25, -0.20],
+    right_hip: [ 0.28, 1.16,  0.04],
+    left_knee: [-0.25, 0.72, -0.10],
+    right_knee:[-0.38, 0.42,  0.58],
+    left_ankle:[-0.28, 0.10, -0.20],
+    right_ankle:[0.38, 0.10, 0.98],
+    left_heel: [-0.31, 0.03, -0.34],
+    right_heel:[0.34, 0.03, 0.80],
+    left_foot_index: [-0.26, 0.03, 0.05],
+    right_foot_index:[0.55, 0.03, 1.28],
+  },
+  catastrophic_crossed_feet_landing: {
+    left_hip:  [-0.22, 1.30, 0.00],
+    right_hip: [ 0.22, 1.22, 0.00],
+    left_knee: [ 0.10, 0.66, 0.08],
+    right_knee:[-0.10, 0.60, 0.08],
+    left_ankle:[0.28, 0.10, 0.10],
+    right_ankle:[-0.28, 0.10, 0.10],
+    left_heel: [0.18, 0.03, -0.08],
+    right_heel:[-0.18, 0.03, -0.08],
+    left_foot_index: [0.45, 0.03, 0.28],
+    right_foot_index:[-0.45, 0.03, 0.28],
+  },
+  catastrophic_extreme_overreach_lunge: {
+    left_hip:  [-0.15, 1.42, -0.72],
+    right_hip: [ 0.30, 1.34, -0.60],
+    left_knee: [-0.20, 0.86, -0.24],
+    right_knee:[ 0.46, 0.44,  0.72],
+    left_ankle:[-0.28, 0.10, -0.34],
+    right_ankle:[0.42, 0.10, 1.55],
+    left_heel: [-0.34, 0.03, -0.52],
+    right_heel:[0.38, 0.03, 1.36],
+    left_foot_index: [-0.23, 0.03, -0.12],
+    right_foot_index:[0.62, 0.03, 1.88],
+  },
+  catastrophic_ankle_roll_proxy_right: {
+    left_hip:  [-0.20, 1.25, -0.10],
+    right_hip: [ 0.25, 1.18,  0.02],
+    left_knee: [-0.25, 0.72, -0.04],
+    right_knee:[ 0.18, 0.52,  0.45],
+    left_ankle:[-0.28, 0.10, -0.10],
+    right_ankle:[0.35, 0.10, 0.86],
+    left_heel: [-0.31, 0.03, -0.24],
+    right_heel:[0.63, 0.02, 0.70],
+    left_foot_index: [-0.24, 0.03, 0.12],
+    right_foot_index:[0.02, 0.03, 1.15],
+  },
+  catastrophic_one_leg_drop_asymmetry: {
+    left_hip:  [-0.30, 0.98, 0.00],
+    right_hip: [ 0.25, 1.42, 0.02],
+    left_knee: [-0.38, 0.38, 0.18],
+    right_knee:[ 0.18, 0.90, 0.02],
+    left_ankle:[-0.42, 0.10, 0.32],
+    right_ankle:[0.22, 0.24, 0.00],
+    left_heel: [-0.46, 0.03, 0.16],
+    right_heel:[0.20, 0.17, -0.12],
+    left_foot_index: [-0.40, 0.03, 0.62],
+    right_foot_index:[0.22, 0.17, 0.22],
+  }
+};
+
+const jointNames = Object.keys(defaultPose);
+const colors = {
+  hip: 0x73e29c,
+  knee: 0x64d2ff,
+  ankle: 0xffca5f,
+  foot: 0xff8ad8
+};
+
+function jointColor(name) {
+  if (name.includes("hip")) return colors.hip;
+  if (name.includes("knee")) return colors.knee;
+  if (name.includes("ankle")) return colors.ankle;
+  return colors.foot;
+}
+
+const jointGroup = new THREE.Group();
+scene.add(jointGroup);
+
+const joints = {};
+const spheres = [];
+const sphereGeo = new THREE.SphereGeometry(0.045, 24, 24);
+
+for (const name of jointNames) {
+  const mat = new THREE.MeshStandardMaterial({ color: jointColor(name), roughness: 0.38, metalness: 0.08 });
+  const sphere = new THREE.Mesh(sphereGeo, mat);
+  sphere.position.fromArray(defaultPose[name]);
+  sphere.userData.name = name;
+  jointGroup.add(sphere);
+  joints[name] = sphere;
+  spheres.push(sphere);
+  createLabel(name, sphere.position);
+}
+
+const bonePairs = [
+  ["left_hip", "right_hip"],
+  ["left_hip", "left_knee"], ["left_knee", "left_ankle"], ["left_ankle", "left_heel"], ["left_ankle", "left_foot_index"], ["left_heel", "left_foot_index"],
+  ["right_hip", "right_knee"], ["right_knee", "right_ankle"], ["right_ankle", "right_heel"], ["right_ankle", "right_foot_index"], ["right_heel", "right_foot_index"],
+];
+
+const lineMat = new THREE.LineBasicMaterial({ color: 0xb7c4d6 });
+const lines = [];
+for (const [a, b] of bonePairs) {
+  const geom = new THREE.BufferGeometry().setFromPoints([joints[a].position, joints[b].position]);
+  const line = new THREE.Line(geom, lineMat);
+  line.userData.pair = [a, b];
+  scene.add(line);
+  lines.push(line);
+}
+
+const transform = new TransformControls(camera, renderer.domElement);
+scene.add(transform.getHelper());
+transform.setMode("translate");
+transform.setSize(0.72);
+transform.addEventListener("dragging-changed", e => {
+  orbit.enabled = !e.value;
+});
+transform.addEventListener("objectChange", () => {
+  syncSlidersFromSelected();
+  updateAll();
+});
+
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let selected = joints.right_knee;
+transform.attach(selected);
+
+renderer.domElement.addEventListener("pointerdown", (event) => {
+  if (transform.dragging) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(spheres, false);
+  if (hits.length) {
+    selected = hits[0].object;
+    transform.attach(selected);
+    document.getElementById("jointSelect").value = selected.userData.name;
+    syncSlidersFromSelected();
+  }
+});
+
+function createLabel(text, pos) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "rgba(16,19,24,0.72)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.font = "24px sans-serif";
+  ctx.fillStyle = "white";
+  ctx.fillText(text.replace("_", " "), 12, 40);
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.85 });
+  const spr = new THREE.Sprite(mat);
+  spr.scale.set(0.28, 0.07, 1);
+  spr.position.copy(pos).add(new THREE.Vector3(0, 0.075, 0));
+  spr.userData.follow = text;
+  scene.add(spr);
+}
+
+function updateLabels() {
+  scene.traverse(obj => {
+    if (obj.isSprite && obj.userData.follow) {
+      obj.position.copy(joints[obj.userData.follow].position).add(new THREE.Vector3(0, 0.075, 0));
+    }
+  });
+}
+
+function updateLines() {
+  for (const line of lines) {
+    const [a, b] = line.userData.pair;
+    line.geometry.setFromPoints([joints[a].position, joints[b].position]);
+    line.geometry.attributes.position.needsUpdate = true;
+  }
+}
+
+function v(a, b) {
+  return new THREE.Vector3().subVectors(b, a);
+}
+
+function angleAt(a, b, c) {
+  const ba = v(b, a);
+  const bc = v(b, c);
+  const denom = ba.length() * bc.length();
+  if (denom < 1e-8) return 0;
+  const cos = THREE.MathUtils.clamp(ba.dot(bc) / denom, -1, 1);
+  return THREE.MathUtils.radToDeg(Math.acos(cos));
+}
+
+function legLength(side) {
+  return joints[`${side}_hip`].position.distanceTo(joints[`${side}_knee`].position)
+       + joints[`${side}_knee`].position.distanceTo(joints[`${side}_ankle`].position);
+}
+
+function footCenter(side) {
+  return new THREE.Vector3().addVectors(joints[`${side}_heel`].position, joints[`${side}_foot_index`].position).multiplyScalar(0.5);
+}
+
+function hipCenter() {
+  return new THREE.Vector3().addVectors(joints.left_hip.position, joints.right_hip.position).multiplyScalar(0.5);
+}
+
+function kneeFlexion(side) {
+  return angleAt(joints[`${side}_hip`].position, joints[`${side}_knee`].position, joints[`${side}_ankle`].position);
+}
+
+function kneeOverFootDeviation(side) {
+  const knee = joints[`${side}_knee`].position;
+  const fc = footCenter(side);
+  const scale = Math.max(legLength(side), 1e-6);
+  // X-axis is lateral; this works best in a front/diagonal camera view.
+  return Math.abs(knee.x - fc.x) / scale;
+}
+
+function footProgressionAngleXZ(side) {
+  const heel = joints[`${side}_heel`].position;
+  const toe = joints[`${side}_foot_index`].position;
+  const dx = toe.x - heel.x;
+  const dz = toe.z - heel.z;
+  // 0 degrees = pointing forward along +Z. Larger absolute value = more toe-in/out relative to forward.
+  return THREE.MathUtils.radToDeg(Math.atan2(dx, dz));
+}
+
+function ankleFootAlignmentRisk(side) {
+  const dev = kneeOverFootDeviation(side);
+  const footAngle = Math.abs(footProgressionAngleXZ(side));
+  const devScore = THREE.MathUtils.clamp(dev / 0.22, 0, 1);
+  const angleScore = THREE.MathUtils.clamp(footAngle / 45, 0, 1);
+  return 0.70 * devScore + 0.30 * angleScore;
+}
+
+function hipDisplacementProxy(supportSide) {
+  const hc = hipCenter();
+  const fc = footCenter(supportSide);
+  const scale = Math.max(legLength(supportSide), 1e-6);
+  const horizontal = new THREE.Vector2(hc.x - fc.x, hc.z - fc.z).length();
+  return THREE.MathUtils.clamp(horizontal / scale, 0, 1);
+}
+
+function landingAsymmetryScore() {
+  const leftK = kneeFlexion("left");
+  const rightK = kneeFlexion("right");
+  const kneeAsymScore = THREE.MathUtils.clamp(Math.abs(leftK - rightK) / 60, 0, 1);
+
+  const pelvisWidth = Math.max(joints.left_hip.position.distanceTo(joints.right_hip.position), 1e-6);
+  const hipHeightScore = THREE.MathUtils.clamp(Math.abs(joints.left_hip.position.y - joints.right_hip.position.y) / (pelvisWidth * 0.8), 0, 1);
+
+  const avgLeg = (legLength("left") + legLength("right")) / 2;
+  const ankleHeightScore = THREE.MathUtils.clamp(Math.abs(joints.left_ankle.position.y - joints.right_ankle.position.y) / (avgLeg * 0.20), 0, 1);
+
+  const wobble = Number(document.getElementById("wobble").value);
+
+  return 0.35 * kneeAsymScore + 0.25 * hipHeightScore + 0.20 * ankleHeightScore + 0.20 * wobble;
+}
+
+function impactLoadProxy(side) {
+  const impactSpeed = Number(document.getElementById("impactSpeed").value);
+  const decel = Number(document.getElementById("decel").value);
+  const knee = kneeFlexion(side);
+  const stiffness = THREE.MathUtils.clamp((knee - 150) / 30, 0, 1);
+  return 0.35 * impactSpeed + 0.40 * decel + 0.25 * stiffness;
+}
+
+function posturalInstabilityScore(side) {
+  const wobble = Number(document.getElementById("wobble").value);
+  const align = ankleFootAlignmentRisk(side);
+  const hipDisp = hipDisplacementProxy(side);
+  return THREE.MathUtils.clamp(0.55 * wobble + 0.25 * align + 0.20 * hipDisp, 0, 1);
+}
+
+function fatigueModifier() {
+  return Number(document.getElementById("fatigue").value);
+}
+
+function normalizeRiskForKnee(side, eventType) {
+  if (eventType === "no_event") return 0;
+  const k = kneeFlexion(side);
+  // For dynamic loading, very straight knee is considered higher stiffness risk.
+  // For lunges, too little bend or excessive deep bend can both be concern; this sandbox keeps the simple stiff-knee version.
+  return THREE.MathUtils.clamp((k - 145) / 35, 0, 1);
+}
+
+function calculate() {
+  const eventType = document.getElementById("eventType").value;
+  const side = document.getElementById("supportSide").value;
+
+  const leftKnee = kneeFlexion("left");
+  const rightKnee = kneeFlexion("right");
+  const kneeRisk = normalizeRiskForKnee(side, eventType);
+  const ankleRisk = eventType === "no_event" ? 0 : ankleFootAlignmentRisk(side);
+  const hipProxy = eventType === "no_event" ? 0 : hipDisplacementProxy(side);
+  const asym = eventType === "no_event" ? 0 : landingAsymmetryScore();
+  const impact = eventType === "no_event" ? 0 : impactLoadProxy(side);
+  const instability = eventType === "no_event" ? 0 : posturalInstabilityScore(side);
+  const fatigue = eventType === "no_event" ? 0 : fatigueModifier();
+
+  const core = 0.20 * kneeRisk + 0.30 * ankleRisk + 0.15 * hipProxy + 0.35 * asym;
+  const final = THREE.MathUtils.clamp(core + 0.12 * impact + 0.13 * instability + 0.10 * fatigue, 0, 1);
+
+  return { eventType, side, leftKnee, rightKnee, kneeRisk, ankleRisk, hipProxy, asym, impact, instability, fatigue, core, final };
+}
+
+function metricRow(label, value, suffix = "", extra = "") {
+  return `<div class="metric"><b>${label}</b><em>${value}${suffix}${extra ? " · " + extra : ""}</em></div>`;
+}
+
+function pct(x) {
+  return Math.round(x * 100);
+}
+
+function updateMetrics() {
+  const m = calculate();
+  const rows = [
+    metricRow("Left knee angle", m.leftKnee.toFixed(1), "°"),
+    metricRow("Right knee angle", m.rightKnee.toFixed(1), "°"),
+    metricRow("Knee stiffness risk", pct(m.kneeRisk), "/100"),
+    metricRow("Ankle/foot alignment risk", pct(m.ankleRisk), "/100"),
+    metricRow("Hip displacement proxy", pct(m.hipProxy), "/100"),
+    metricRow("Landing asymmetry score", pct(m.asym), "/100"),
+    metricRow("Impact load proxy", pct(m.impact), "/100"),
+    metricRow("Postural instability score", pct(m.instability), "/100"),
+    metricRow("Fatigue modifier", pct(m.fatigue), "/100"),
+    metricRow("Core pose risk", pct(m.core), "/100"),
+  ];
+  document.getElementById("metrics").innerHTML = rows.join("");
+
+  const risk = Math.round(m.final * 100);
+  document.getElementById("finalRisk").textContent = risk;
+  const fill = document.getElementById("riskFill");
+  fill.style.width = `${risk}%`;
+  fill.style.background = risk < 35 ? "var(--good)" : risk < 65 ? "var(--warn)" : "var(--bad)";
+
+  const status = document.getElementById("status");
+  if (m.eventType === "no_event") {
+    status.textContent = "No Event / Do Not Score";
+    status.style.background = "rgba(115,226,156,0.14)";
+    status.style.borderColor = "rgba(115,226,156,0.28)";
+    status.style.color = "var(--good)";
+  } else if (risk < 35) {
+    status.textContent = "Acceptable Pattern";
+    status.style.background = "rgba(115,226,156,0.14)";
+    status.style.borderColor = "rgba(115,226,156,0.28)";
+    status.style.color = "var(--good)";
+  } else if (risk < 65) {
+    status.textContent = "Caution Pattern";
+    status.style.background = "rgba(255,202,95,0.13)";
+    status.style.borderColor = "rgba(255,202,95,0.30)";
+    status.style.color = "var(--warn)";
+  } else {
+    status.textContent = "Risky Repeated Pattern";
+    status.style.background = "rgba(255,107,107,0.13)";
+    status.style.borderColor = "rgba(255,107,107,0.32)";
+    status.style.color = "var(--bad)";
+  }
+}
+
+function updateAll() {
+  updateLines();
+  updateLabels();
+  updateMetrics();
+}
+
+const jointSelect = document.getElementById("jointSelect");
+for (const name of jointNames) {
+  const opt = document.createElement("option");
+  opt.value = name;
+  opt.textContent = name;
+  jointSelect.appendChild(opt);
+}
+jointSelect.value = "right_knee";
+
+const sliders = {
+  x: document.getElementById("xSlider"),
+  y: document.getElementById("ySlider"),
+  z: document.getElementById("zSlider"),
+};
+const vals = {
+  x: document.getElementById("xVal"),
+  y: document.getElementById("yVal"),
+  z: document.getElementById("zVal"),
+};
+
+function syncSlidersFromSelected() {
+  if (!selected) return;
+  sliders.x.value = selected.position.x.toFixed(2);
+  sliders.y.value = selected.position.y.toFixed(2);
+  sliders.z.value = selected.position.z.toFixed(2);
+  vals.x.textContent = selected.position.x.toFixed(2);
+  vals.y.textContent = selected.position.y.toFixed(2);
+  vals.z.textContent = selected.position.z.toFixed(2);
+}
+
+function syncSelectedFromSliders() {
+  if (!selected) return;
+  selected.position.set(Number(sliders.x.value), Number(sliders.y.value), Number(sliders.z.value));
+  vals.x.textContent = selected.position.x.toFixed(2);
+  vals.y.textContent = selected.position.y.toFixed(2);
+  vals.z.textContent = selected.position.z.toFixed(2);
+  updateAll();
+}
+
+jointSelect.addEventListener("change", () => {
+  selected = joints[jointSelect.value];
+  transform.attach(selected);
+  syncSlidersFromSelected();
+});
+
+for (const s of Object.values(sliders)) {
+  s.addEventListener("input", syncSelectedFromSliders);
+}
+
+for (const id of ["impactSpeed", "decel", "wobble", "fatigue"]) {
+  const el = document.getElementById(id);
+  const label = document.getElementById(id === "impactSpeed" ? "impactSpeedLabel" : id === "decel" ? "decelLabel" : id === "wobble" ? "wobbleLabel" : "fatigueLabel");
+  el.addEventListener("input", () => {
+    label.textContent = Number(el.value).toFixed(2);
+    updateAll();
+  });
+}
+
+const presetMeta = {
+  neutral: { eventType: "no_event", supportSide: "right", impactSpeed: 0.20, decel: 0.20, wobble: 0.05, fatigue: 0.00 },
+  reset: { eventType: "no_event", supportSide: "right", impactSpeed: 0.20, decel: 0.20, wobble: 0.05, fatigue: 0.00 },
+
+  good_split_step_soft: { eventType: "jump_landing", supportSide: "right", impactSpeed: 0.18, decel: 0.18, wobble: 0.05, fatigue: 0.05 },
+  good_right_lunge: { eventType: "lunge", supportSide: "right", impactSpeed: 0.25, decel: 0.25, wobble: 0.10, fatigue: 0.10 },
+  good_left_lunge: { eventType: "lunge", supportSide: "left", impactSpeed: 0.25, decel: 0.25, wobble: 0.10, fatigue: 0.10 },
+  good_jump_landing_soft: { eventType: "jump_landing", supportSide: "right", impactSpeed: 0.22, decel: 0.22, wobble: 0.08, fatigue: 0.08 },
+  good_direction_change: { eventType: "direction_change", supportSide: "right", impactSpeed: 0.30, decel: 0.30, wobble: 0.12, fatigue: 0.12 },
+  good_lunge: { eventType: "lunge", supportSide: "right", impactSpeed: 0.25, decel: 0.25, wobble: 0.10, fatigue: 0.10 },
+
+  risky_right_knee_valgus_lunge: { eventType: "lunge", supportSide: "right", impactSpeed: 0.45, decel: 0.45, wobble: 0.45, fatigue: 0.20 },
+  risky_left_knee_valgus_lunge: { eventType: "lunge", supportSide: "left", impactSpeed: 0.45, decel: 0.45, wobble: 0.45, fatigue: 0.20 },
+  risky_toe_in_landing: { eventType: "jump_landing", supportSide: "right", impactSpeed: 0.55, decel: 0.55, wobble: 0.35, fatigue: 0.20 },
+  risky_overreach_lunge: { eventType: "lunge", supportSide: "right", impactSpeed: 0.50, decel: 0.50, wobble: 0.42, fatigue: 0.25 },
+  risky_pelvis_shift_direction_change: { eventType: "direction_change", supportSide: "right", impactSpeed: 0.55, decel: 0.55, wobble: 0.55, fatigue: 0.25 },
+  risky_stiff_jump_landing: { eventType: "jump_landing", supportSide: "right", impactSpeed: 0.85, decel: 0.85, wobble: 0.35, fatigue: 0.20 },
+  risky_asymmetric_landing: { eventType: "direction_change", supportSide: "left", impactSpeed: 0.55, decel: 0.55, wobble: 0.65, fatigue: 0.35 },
+  knee_inward: { eventType: "lunge", supportSide: "right", impactSpeed: 0.45, decel: 0.45, wobble: 0.45, fatigue: 0.20 },
+  stiff_landing: { eventType: "jump_landing", supportSide: "right", impactSpeed: 0.85, decel: 0.85, wobble: 0.35, fatigue: 0.20 },
+  asymmetry: { eventType: "direction_change", supportSide: "left", impactSpeed: 0.55, decel: 0.55, wobble: 0.65, fatigue: 0.35 },
+
+  catastrophic_knee_collapse_right_lunge: { eventType: "lunge", supportSide: "right", impactSpeed: 0.90, decel: 0.90, wobble: 0.95, fatigue: 0.55 },
+  catastrophic_crossed_feet_landing: { eventType: "jump_landing", supportSide: "right", impactSpeed: 0.95, decel: 0.95, wobble: 0.90, fatigue: 0.50 },
+  catastrophic_extreme_overreach_lunge: { eventType: "lunge", supportSide: "right", impactSpeed: 0.90, decel: 0.90, wobble: 0.88, fatigue: 0.55 },
+  catastrophic_ankle_roll_proxy_right: { eventType: "direction_change", supportSide: "right", impactSpeed: 0.88, decel: 0.88, wobble: 0.92, fatigue: 0.50 },
+  catastrophic_one_leg_drop_asymmetry: { eventType: "jump_landing", supportSide: "left", impactSpeed: 0.90, decel: 0.90, wobble: 0.96, fatigue: 0.60 }
+};
+
+function applyPresetControls(name) {
+  const meta = presetMeta[name] || presetMeta.neutral;
+  document.getElementById("eventType").value = meta.eventType;
+  document.getElementById("supportSide").value = meta.supportSide;
+  document.getElementById("impactSpeed").value = meta.impactSpeed;
+  document.getElementById("decel").value = meta.decel;
+  document.getElementById("wobble").value = meta.wobble;
+  document.getElementById("fatigue").value = meta.fatigue;
+
+  for (const id of ["impactSpeed", "decel", "wobble", "fatigue"]) {
+    document.getElementById(id).dispatchEvent(new Event("input"));
+  }
+}
+
+for (const btn of document.querySelectorAll("button[data-preset]")) {
+  btn.addEventListener("click", () => {
+    const name = btn.dataset.preset;
+    const p = presets[name] || presets.neutral;
+
+    for (const jointName of jointNames) {
+      joints[jointName].position.fromArray(p[jointName]);
+    }
+
+    applyPresetControls(name);
+    syncSlidersFromSelected();
+    updateAll();
+  });
+}
+
+for (const id of ["eventType", "supportSide"]) {
+  document.getElementById(id).addEventListener("change", updateAll);
+}
+
+function resize() {
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+window.addEventListener("resize", resize);
+
+syncSlidersFromSelected();
+updateAll();
+
+function animate() {
+  requestAnimationFrame(animate);
+  orbit.update();
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
