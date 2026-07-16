@@ -222,7 +222,10 @@ def _create_pose_detector(fps: float = 30.0) -> PoseDetector:
         RunningMode,
     )
 
-    base_options = BaseOptions(model_asset_path=str(model_path))
+    base_options = BaseOptions(
+        model_asset_path=str(model_path),
+        delegate=BaseOptions.Delegate.CPU,
+    )
     options = PoseLandmarkerOptions(
         base_options=base_options,
         running_mode=RunningMode.VIDEO,
