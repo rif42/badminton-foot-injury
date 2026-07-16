@@ -12,6 +12,9 @@ import csv
 import json
 import os
 import sys
+import tempfile
+import urllib.request
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 import cv2
@@ -30,6 +33,87 @@ import mediapipe as mp  # noqa: E402
 from .baseline_risk import LowerBodyPose, Point, core_risk_score  # noqa: E402
 from .injury_descriptions import describe_critical_risks  # noqa: E402
 from .motion_gate import MotionGate  # noqa: E402
+
+
+def _download_model(url: str, dest: Path) -> None:
+    """Download the MediaPipe pose landmarker model if it is not present."""
+    if dest.exists():
+        return
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with urllib.request.urlopen(url, timeout=120) as response:  # noqa: S310
+        dest.write_bytes(response.read())
+
+
+def _model_path() -> Path:
+    """Return a local path to the MediaPipe pose landmarker model.
+
+    The model is downloaded on first use to a temp directory. The temp path
+    is reused within the same environment so the download happens only once.
+    """
+    model_dir = Path(tempfile.gettempdir()) / "badminton_risk_models"
+    return model_dir / "pose_landmarker_full.task"
+
+
+_MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/"
+    "pose_landmarker/pose_landmarker_full/float16/1/"
+    "pose_landmarker_full.task"
+)
+
+
+class _LegacyLandmarkList:
+    """Compatibility wrapper for MediaPipe Tasks pose landmarks.
+
+    The legacy Solutions API returned a ``NormalizedLandmarkList`` protobuf with
+    a ``.landmark`` list. The new Tasks API returns a list of lists of
+    ``NormalizedLandmark`` objects. This wrapper exposes the same ``.landmark``
+    attribute so the rest of the analyzer can stay unchanged.
+    """
+
+    def __init__(self, landmarks: list[Any]) -> None:
+        self.landmark = landmarks
+
+
+class _PoseResultAdapter:
+    """Compatibility wrapper for MediaPipe Tasks detection results.
+
+    Exposes ``pose_landmarks`` in the legacy shape expected by
+    ``_extract_pose``.
+    """
+
+    def __init__(self, detection_result: Any) -> None:
+        if detection_result.pose_landmarks:
+            self.pose_landmarks = _LegacyLandmarkList(
+                detection_result.pose_landmarks[0]
+            )
+        else:
+            self.pose_landmarks = None
+
+
+class _PoseLandmarkerAdapter:
+    """Adapter that exposes the old ``process``/``close`` API over a Tasks detector.
+
+    The Tasks ``PoseLandmarker`` requires an RGB ``mediapipe.Image`` and a
+    monotonic timestamp in milliseconds. This adapter tracks the frame index
+    and builds the image object so callers can keep using the legacy interface.
+    """
+
+    def __init__(self, detector: Any, fps: float) -> None:
+        self._detector = detector
+        self._fps = fps
+        self._frame_idx = 0
+
+    def process(self, image: Any) -> Any:
+        """Run pose detection on an RGB numpy array and return a legacy result."""
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image)
+        timestamp_ms = int(round(self._frame_idx * 1000 / self._fps))
+        result = self._detector.detect_for_video(mp_image, timestamp_ms)
+        self._frame_idx += 1
+        return _PoseResultAdapter(result)
+
+    def close(self) -> None:
+        """Release detector resources."""
+        self._detector.close()
 
 
 @runtime_checkable
@@ -113,23 +197,42 @@ _POPUP_DISPLAY_SECONDS = 3.0
 DEFAULT_OUTPUT_CSV = "risk_report.csv"
 
 
-def _create_pose_detector() -> PoseDetector:
-    """Create and return a default MediaPipe Pose detector.
+def _create_pose_detector(fps: float = 30.0) -> PoseDetector:
+    """Create and return a MediaPipe Pose detector using the Tasks API.
 
-    This helper is separated from ``analyze_video`` so that tests and other
-    callers can inject a mock or alternative detector without importing
-    MediaPipe directly.
+    The legacy ``mp.solutions.pose`` API is not available in recent MediaPipe
+    wheels (e.g. 0.10.30+), so this implementation uses the newer Tasks API
+    and adapts it to the ``process``/``close`` interface used by the rest of
+    the analyzer.
+
+    Args:
+        fps: Frames per second of the input stream, used to compute monotonic
+            timestamps for the video detector.
 
     Returns:
-        A MediaPipe ``Pose`` instance configured for video streams.
+        A pose detector adapter configured for video streams.
     """
-    mp_pose = mp.solutions.pose
-    return mp_pose.Pose(
-        static_image_mode=False,
-        model_complexity=_DEFAULT_MODEL_COMPLEXITY,
-        min_detection_confidence=_DEFAULT_MIN_DETECTION_CONFIDENCE,
+    model_path = _model_path()
+    _download_model(_MODEL_URL, model_path)
+
+    from mediapipe.tasks.python.core.base_options import BaseOptions
+    from mediapipe.tasks.python.vision import (
+        PoseLandmarker,
+        PoseLandmarkerOptions,
+        RunningMode,
+    )
+
+    base_options = BaseOptions(model_asset_path=str(model_path))
+    options = PoseLandmarkerOptions(
+        base_options=base_options,
+        running_mode=RunningMode.VIDEO,
+        num_poses=1,
+        min_pose_detection_confidence=_DEFAULT_MIN_DETECTION_CONFIDENCE,
+        min_pose_presence_confidence=_DEFAULT_MIN_TRACKING_CONFIDENCE,
         min_tracking_confidence=_DEFAULT_MIN_TRACKING_CONFIDENCE,
     )
+    detector = PoseLandmarker.create_from_options(options)
+    return _PoseLandmarkerAdapter(detector, fps)
 
 
 def _landmark_to_point(landmarks: Any, index: int, image_shape: tuple[int, ...]) -> Point:
@@ -445,7 +548,7 @@ def analyze_video(
             cap.release()
             raise RuntimeError(f"Could not open video writer: {output_video}")
 
-    pose = pose_detector if pose_detector is not None else _create_pose_detector()
+    pose = pose_detector if pose_detector is not None else _create_pose_detector(fps)
 
     gate = MotionGate(window_seconds=_MOTION_GATE_WINDOW_SECONDS, fps=fps)
     results: list[dict[str, Any]] | None = [] if output_csv is not None else None
