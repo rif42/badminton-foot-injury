@@ -454,11 +454,58 @@ def build_csv_rows(results: list[dict[str, Any]]) -> list[dict[str, str]]:
         "landing_asymmetry_score",
         "core_risk",
         "status",
+        "injury_names",
+        "injury_descriptions",
+        "injury_preventions",
     ]
-    return [
-        {key: str(row.get(key, "")) for key in fieldnames}
-        for row in results
-    ]
+    numeric_keys = {
+        "time_sec",
+        "knee_stiffness_risk",
+        "ankle_foot_alignment_risk",
+        "hip_displacement_proxy",
+        "landing_asymmetry_score",
+        "core_risk",
+    }
+    component_keys = {
+        "knee_stiffness_risk",
+        "ankle_foot_alignment_risk",
+        "hip_displacement_proxy",
+        "landing_asymmetry_score",
+    }
+
+    rows: list[dict[str, str]] = []
+    for row in results:
+        csv_row: dict[str, str] = {}
+        for key in fieldnames:
+            if key in numeric_keys:
+                value = row.get(key, "")
+                if value == "" or value is None:
+                    csv_row[key] = ""
+                else:
+                    try:
+                        csv_row[key] = str(round(float(value), 3))
+                    except (ValueError, TypeError):
+                        csv_row[key] = str(value)
+            elif key in ("injury_names", "injury_descriptions", "injury_preventions"):
+                csv_row[key] = ""
+            else:
+                csv_row[key] = str(row.get(key, ""))
+
+        if row.get("status") == _STATUS_RISKY:
+            score_dict = {k: float(row.get(k, 0.0)) for k in component_keys}
+            injuries = describe_critical_risks(score_dict)
+            if injuries:
+                csv_row["injury_names"] = " | ".join(str(i["name"]) for i in injuries)
+                csv_row["injury_descriptions"] = " | ".join(
+                    str(i["description"]) for i in injuries
+                )
+                csv_row["injury_preventions"] = " | ".join(
+                    str(i["prevention"]) for i in injuries
+                )
+
+        rows.append(csv_row)
+
+    return rows
 
 
 def _try_video_writer(

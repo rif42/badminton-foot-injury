@@ -166,9 +166,14 @@ else:
             "hip_displacement_proxy",
             "landing_asymmetry_score",
         ]
+        injury_cols = [
+            "injury_names",
+            "injury_descriptions",
+            "injury_preventions",
+        ]
         display_cols = ["frame", "time_sec", "status"] + [
             c for c in numeric_cols if c in display_df.columns
-        ]
+        ] + [c for c in injury_cols if c in display_df.columns]
         display = display_df[display_cols].copy()
         for col in numeric_cols:
             if col in display.columns:
