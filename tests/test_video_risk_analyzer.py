@@ -84,11 +84,11 @@ def test_status_acceptable():
 
 def test_status_caution():
     assert _status(0.35) == "caution"
-    assert _status(0.64) == "caution"
+    assert _status(0.59) == "caution"
 
 
 def test_status_risky():
-    assert _status(0.65) == "risky"
+    assert _status(0.60) == "risky"
     assert _status(1.0) == "risky"
 
 
