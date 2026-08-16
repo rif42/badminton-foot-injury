@@ -35,7 +35,7 @@ so imports need `PYTHONPATH=src` (the `scripts/*.bat` wrappers set it already).
 - `risk_overlay.py` — OpenCV HUD drawing (BGR color constants, panel).
 - `webcam_leg_pose_detector.py` — reusable `PoseDetector` webcam wrapper; no risk scoring.
 
-CSV output columns: `frame`, `time_sec`, `status` (safe/caution/risky), `core_risk`, `knee_stiffness_risk`, `ankle_foot_alignment_risk`, `hip_displacement_proxy`, `landing_asymmetry_score`, plus `injury_names` / `injury_descriptions` / `injury_preventions`.
+CSV output columns: `frame`, `time_sec`, `status` (safe/caution/risky), `core_risk`, `knee_stiffness_risk`, `ankle_foot_alignment_risk`, `ankle_roll_risk`, `ankle_roll_angle_deg`, `ankle_roll_event`, `hip_displacement_proxy`, `landing_asymmetry_score`, plus `injury_names` / `injury_descriptions` / `injury_preventions`. Ankle roll (inversion/eversion) is computed from the foot-plane-vs-shank angle, gated to planted feet, and baseline-calibrated during standing frames; `ankle_roll_event` fires at ≥45° roll deviation.
 
 ## Conventions
 
@@ -51,3 +51,10 @@ CSV output columns: `frame`, `time_sec`, `status` (safe/caution/risky), `core_ri
 - `.slim/`, `.worktrees/`, caches (`.pytest_cache`, `.ruff_cache`) are tool state — gitignored, leave them out of commits.
 - `data/results/` and generated `*_report.csv` / `*_annotated.mp4` outputs are gitignored; `scripts/run_analyzer_on_dataset.bat` regenerates `data/results/` on demand.
 - Web demos `web/` (three.js, `bun.lock`) are standalone; no build step wired into the Python workflow.
+
+## Anti-jitter smoothing (slow-mo friendly)
+
+- `src/badminton_risk/smoothing.py`: `LandmarkSmoother` = 3-tap median pre-filter (kills single-frame landmark teleports) + One-Euro low-pass (adaptively filters noise while tracking real motion with ~2-frame lag). Defaults `OneEuroParams(0.8, 0.02, 0.5, median_window=3)`; tune these to trade smoothness vs responsiveness.
+- Applied right after landmark extraction in both paths (offline `analyze_video`, live `webcam_leg_pose_detector`), reset on pose loss; the smoothed landmarks feed scoring AND the drawn skeleton.
+- Score-level: offline EMA (`_SCORE_SMOOTHING_ALPHA=0.5`) over risk components; status with hysteresis (rise 0.35/0.60, clear 0.30/0.55 via `_status_with_hysteresis`); `ankle_roll_event` needs 2 consecutive frames; live `RiskModel` status has `_STATUS_HYSTERESIS_FRACTION=0.15` margins.
+- Motion gate: `MotionGate(exit_ratio=0.035, min_consecutive_frames=2)` debounces `is_moving`; offline `_extract_pose` skips frames with landmark visibility < 0.5.

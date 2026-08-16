@@ -15,6 +15,7 @@ from badminton_risk.video_risk_analyzer import (
     _extract_pose,
     _landmark_to_point,
     _status,
+    _status_with_hysteresis,
     analyze_video,
     build_csv_rows,
     draw_pose_overlay,
@@ -89,6 +90,19 @@ def test_status_caution():
 
 def test_status_risky():
     assert _status(0.60) == "risky"
+
+
+def test_status_hysteresis_prevents_flicker():
+    # Rising: caution at >= 0.35, risky at >= 0.60.
+    assert _status_with_hysteresis(0.36, "acceptable") == "caution"
+    assert _status_with_hysteresis(0.61, "caution") == "risky"
+    # Hovering just below the threshold keeps the current label.
+    assert _status_with_hysteresis(0.32, "caution") == "caution"
+    assert _status_with_hysteresis(0.58, "risky") == "risky"
+    # Clear bands: caution clears below 0.30, risky below 0.55.
+    assert _status_with_hysteresis(0.29, "caution") == "acceptable"
+    assert _status_with_hysteresis(0.52, "risky") == "caution"
+    assert _status_with_hysteresis(0.28, "risky") == "acceptable"
     assert _status(1.0) == "risky"
 
 
@@ -575,7 +589,7 @@ def test_main_popup_persists_after_short_risky_segment(tmp_path, monkeypatch):
 
     def _score_side_effect():
         count = 0
-        def _inner(_pose):
+        def _inner(_pose, **_kwargs):
             nonlocal count
             if count == 0:
                 count += 1

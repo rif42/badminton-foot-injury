@@ -6,11 +6,11 @@
 /.worktrees
 
 # Generated risk reports
-report.csv
-*_report.csv
-/data/results/
-/data/examples/*.csv
-/data/examples/*_annotated.mp4
+# report.csv
+# *_report.csv
+# /data/results/
+# /data/examples/*.csv
+# /data/examples/*_annotated.mp4
 *.pyc
 
 # Deepwork session state

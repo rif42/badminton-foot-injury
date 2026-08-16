@@ -24,6 +24,14 @@ The project classifies badminton footwork as **safe** or **dangerous** based on 
 - **Parameter**: Relative distance of Big Toe to Small Toe/Outer Ankle keypoints from ground plane
 - **Safe**: Medial aspect maintains floor contact
 - **Danger threshold**: Outer edge closer to ground than big toe → ankle eversion dragging
+- **Status**: Implemented as `ankle_roll_risk` / `ankle_roll_angle_deg` / `ankle_roll_event`
+  in `src/badminton_risk/baseline_risk.py`. MediaPipe Pose has no toe or
+  outer-malleolus landmarks, so the implementation measures the tilt of the foot
+  plane `(heel−ankle)×(foot_index−ankle)` relative to the shank axis
+  `knee−ankle` (roll ≈ 0° neutral, ±90° fully rolled), gated to planted feet
+  and calibrated against a per-subject neutral stance baseline. Graded 0–1 risk
+  with a severe-event flag at ≥45° deviation (literature: injury threshold
+  ~25–30°, sprain peaks ~48°).
 
 ### 5. Hip Rotation (Hip Opening Control) — Proposed Addition
 - Monitors whether the hip "opens" laterally during movement

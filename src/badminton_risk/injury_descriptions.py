@@ -49,6 +49,21 @@ INJURY_DESCRIPTIONS: tuple[InjuryDescription, ...] = (
         ),
     ),
     InjuryDescription(
+        component="ankle_roll_risk",
+        name="Ankle roll (inversion/eversion)",
+        short_description="Foot rolled sideways at the ankle",
+        description=(
+            "The foot is rolled sideways at the ankle (inversion/eversion), "
+            "the classic lateral ankle-sprain mechanism. A severe roll can "
+            "injure the ATFL and other lateral ankle ligaments."
+        ),
+        prevention=(
+            "Land with the foot flat and pointed along the direction of "
+            "movement; strengthen the peroneal muscles and practice stable "
+            "single-leg landings."
+        ),
+    ),
+    InjuryDescription(
         component="hip_displacement_proxy",
         name="Hip instability",
         short_description="Pelvis displaced from base of support",

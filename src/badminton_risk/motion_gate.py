@@ -16,6 +16,9 @@ Point = tuple[float, float, float]
 _DEFAULT_WINDOW_SECONDS = 0.3
 _DEFAULT_FPS = 30.0
 _DEFAULT_THRESHOLD_RATIO = 0.05
+# When ``exit_ratio`` is not provided, standing is declared below this
+# fraction of the entry threshold (hysteresis band).
+_DEFAULT_EXIT_FRACTION = 0.7
 _LABEL_MOVING = "moving"
 _LABEL_STANDING = "standing"
 
@@ -42,13 +45,26 @@ class MotionGate:
     window_seconds: float = _DEFAULT_WINDOW_SECONDS
     fps: float = _DEFAULT_FPS
     threshold_ratio: float = _DEFAULT_THRESHOLD_RATIO
+    # Lower threshold (fraction of leg length) for declaring standing once
+    # moving. ``None`` falls back to ``_DEFAULT_EXIT_FRACTION`` of the entry
+    # threshold, creating a hysteresis band so hovering displacements do not
+    # flicker the label.
+    exit_ratio: float | None = None
+    # Minimum number of consecutive disagreeing frames before the label flips
+    # (debounce). ``0`` switches immediately (legacy behavior).
+    min_consecutive_frames: int = 0
     history: list[Point] = field(default_factory=list)
+    _state: str = field(default=_LABEL_STANDING, init=False, repr=False)
+    _consecutive: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self):
         """Validate constructor arguments."""
         assert self.window_seconds > 0, "window_seconds must be positive"
         assert self.fps > 0, "fps must be positive"
         assert self.threshold_ratio >= 0, "threshold_ratio must be non-negative"
+        assert self.min_consecutive_frames >= 0, "min_consecutive_frames must be non-negative"
+        if self.exit_ratio is not None:
+            assert self.exit_ratio >= 0, "exit_ratio must be non-negative"
 
     @property
     def window_frames(self) -> int:
@@ -110,8 +126,25 @@ class MotionGate:
         displacement = math.sqrt(
             (end[0] - start[0]) ** 2 + (end[2] - start[2]) ** 2
         )
-        threshold = leg_length * self.threshold_ratio
-        return _LABEL_MOVING if displacement > threshold else _LABEL_STANDING
+        entry_threshold = leg_length * self.threshold_ratio
+        exit_threshold = leg_length * (
+            self.exit_ratio
+            if self.exit_ratio is not None
+            else self.threshold_ratio * _DEFAULT_EXIT_FRACTION
+        )
+        if self._state == _LABEL_MOVING:
+            want = _LABEL_MOVING if displacement > exit_threshold else _LABEL_STANDING
+        else:
+            want = _LABEL_MOVING if displacement > entry_threshold else _LABEL_STANDING
+
+        if want == self._state:
+            self._consecutive = 0
+            return self._state
+        self._consecutive += 1
+        if self._consecutive >= self.min_consecutive_frames:
+            self._state = want
+            self._consecutive = 0
+        return self._state
 
 
 def classify_frame(
