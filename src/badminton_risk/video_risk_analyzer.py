@@ -153,13 +153,13 @@ _STATUS_ACCEPTABLE = "acceptable"
 _STATUS_CAUTION = "caution"
 _STATUS_RISKY = "risky"
 
-_CORE_RISK_CAUTION_THRESHOLD = 0.35
-_CORE_RISK_RISKY_THRESHOLD = 0.60
+_CORE_RISK_CAUTION_THRESHOLD = 0.25
+_CORE_RISK_RISKY_THRESHOLD = 0.55
 # Status hysteresis: the label rises at the thresholds above but only clears
 # below these lowered bands, so a score hovering near a boundary does not
 # flicker the status frame-to-frame.
-_CORE_RISK_CAUTION_CLEAR = 0.30
-_CORE_RISK_RISKY_CLEAR = 0.55
+_CORE_RISK_CAUTION_CLEAR = 0.20
+_CORE_RISK_RISKY_CLEAR = 0.40
 
 # Exponential smoothing factor (0-1) for the per-frame risk components;
 # higher = more responsive, lower = smoother.

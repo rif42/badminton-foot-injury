@@ -138,7 +138,7 @@ PROFILE_PRESETS = {
             "knee_x_pitch": 8,
             "hip_x_foot": 6,
         },
-        "bands": {"green_max": 29, "yellow_max": 59},
+        "bands": {"green_max": 25, "yellow_max": 45},
     },
     "aggressive": {
         "label": "Aggressive",

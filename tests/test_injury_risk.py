@@ -51,7 +51,7 @@ class TestDataStructures:
             "knee_x_pitch",
             "hip_x_foot",
         }
-        assert profile.bands == {"green_max": 29, "yellow_max": 59}
+        assert profile.bands == {"green_max": 25, "yellow_max": 45}
 
     def test_all_presets_exist(self):
         assert set(PROFILE_PRESETS) == {"conservative", "balanced", "aggressive"}

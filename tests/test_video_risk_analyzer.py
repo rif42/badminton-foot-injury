@@ -80,29 +80,31 @@ def test_build_csv_rows():
 
 def test_status_acceptable():
     assert _status(0.0) == "acceptable"
-    assert _status(0.34) == "acceptable"
+    assert _status(0.24) == "acceptable"
 
 
 def test_status_caution():
-    assert _status(0.35) == "caution"
-    assert _status(0.59) == "caution"
+    assert _status(0.25) == "caution"
+    assert _status(0.44) == "caution"
 
 
 def test_status_risky():
-    assert _status(0.60) == "risky"
+    assert _status(0.45) == "risky"
 
 
 def test_status_hysteresis_prevents_flicker():
-    # Rising: caution at >= 0.35, risky at >= 0.60.
-    assert _status_with_hysteresis(0.36, "acceptable") == "caution"
-    assert _status_with_hysteresis(0.61, "caution") == "risky"
-    # Hovering just below the threshold keeps the current label.
-    assert _status_with_hysteresis(0.32, "caution") == "caution"
-    assert _status_with_hysteresis(0.58, "risky") == "risky"
-    # Clear bands: caution clears below 0.30, risky below 0.55.
-    assert _status_with_hysteresis(0.29, "caution") == "acceptable"
-    assert _status_with_hysteresis(0.52, "risky") == "caution"
-    assert _status_with_hysteresis(0.28, "risky") == "acceptable"
+    # Rising: caution at >= 0.25, risky at >= 0.45.
+    assert _status_with_hysteresis(0.26, "acceptable") == "caution"
+    assert _status_with_hysteresis(0.46, "caution") == "risky"
+
+    # Staying while still inside the clear bands.
+    assert _status_with_hysteresis(0.22, "caution") == "caution"
+    assert _status_with_hysteresis(0.43, "risky") == "risky"
+
+    # Clear bands: caution clears below 0.20, risky below 0.40.
+    assert _status_with_hysteresis(0.19, "caution") == "acceptable"
+    assert _status_with_hysteresis(0.39, "risky") == "caution"
+    assert _status_with_hysteresis(0.18, "risky") == "acceptable"
     assert _status(1.0) == "risky"
 
 

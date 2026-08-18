@@ -1,0 +1,32 @@
+[
+  {
+    "frame": 51,
+    "time_sec": 1.7,
+    "injuries": [
+      {
+        "component": "hip_displacement_proxy",
+        "name": "Hip instability",
+        "short_description": "Pelvis displaced from base of support",
+        "description": "The pelvis is displaced far from the base of support, transferring excessive stress to the knee and ankle.",
+        "prevention": "Keep the hips centered over the feet and strengthen hip stabilizers for better control.",
+        "score": 0.7125020439298299
+      },
+      {
+        "component": "ankle_foot_alignment_risk",
+        "name": "Ankle sprain (ATFL tear)",
+        "short_description": "Foot not aligned with momentum",
+        "description": "The foot is not aligned with the body's momentum, creating lateral shearing forces on the ankle ligaments.",
+        "prevention": "Land with the foot pointing along the direction of movement and keep the knee centered over the foot.",
+        "score": 0.6546419046269996
+      },
+      {
+        "component": "landing_asymmetry_score",
+        "name": "Uneven lower-body loading",
+        "short_description": "Left-right imbalance on landing",
+        "description": "Left-right imbalance in knee flexion, pelvis height, or ankle position produces uneven shock absorption.",
+        "prevention": "Train balanced, symmetric landing mechanics and distribute weight equally through both legs.",
+        "score": 0.561827848493744
+      }
+    ]
+  }
+]

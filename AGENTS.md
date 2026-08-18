@@ -56,5 +56,5 @@ CSV output columns: `frame`, `time_sec`, `status` (safe/caution/risky), `core_ri
 
 - `src/badminton_risk/smoothing.py`: `LandmarkSmoother` = 3-tap median pre-filter (kills single-frame landmark teleports) + One-Euro low-pass (adaptively filters noise while tracking real motion with ~2-frame lag). Defaults `OneEuroParams(0.8, 0.02, 0.5, median_window=3)`; tune these to trade smoothness vs responsiveness.
 - Applied right after landmark extraction in both paths (offline `analyze_video`, live `webcam_leg_pose_detector`), reset on pose loss; the smoothed landmarks feed scoring AND the drawn skeleton.
-- Score-level: offline EMA (`_SCORE_SMOOTHING_ALPHA=0.5`) over risk components; status with hysteresis (rise 0.35/0.60, clear 0.30/0.55 via `_status_with_hysteresis`); `ankle_roll_event` needs 2 consecutive frames; live `RiskModel` status has `_STATUS_HYSTERESIS_FRACTION=0.15` margins.
+- Score-level: offline EMA (`_SCORE_SMOOTHING_ALPHA=0.5`) over risk components; status with hysteresis (rise 0.25/0.45, clear 0.20/0.40 via `_status_with_hysteresis`); `ankle_roll_event` needs 2 consecutive frames; live `RiskModel` status has `_STATUS_HYSTERESIS_FRACTION=0.15` margins.
 - Motion gate: `MotionGate(exit_ratio=0.035, min_consecutive_frames=2)` debounces `is_moving`; offline `_extract_pose` skips frames with landmark visibility < 0.5.

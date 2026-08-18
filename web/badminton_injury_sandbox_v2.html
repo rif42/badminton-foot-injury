@@ -224,6 +224,7 @@
       <div id="status" class="status">No Event / Low Concern</div>
       <div class="bar"><div id="riskFill" class="fill"></div></div>
       <div class="small">Final risk score: <b id="finalRisk">0</b>/100</div>
+      <div class="small">Scale: green = low load · yellow = active load · red = injury risk</div>
     </div>
 
     <h2>Movement Context</h2>
@@ -1024,7 +1025,7 @@ function updateMetrics() {
   document.getElementById("finalRisk").textContent = risk;
   const fill = document.getElementById("riskFill");
   fill.style.width = `${risk}%`;
-  fill.style.background = m.rollEvent ? "var(--bad)" : risk < 35 ? "var(--good)" : risk < 65 ? "var(--warn)" : "var(--bad)";
+  fill.style.background = m.rollEvent ? "var(--bad)" : risk < 25 ? "var(--good)" : risk < 45 ? "var(--warn)" : "var(--bad)";
 
   const status = document.getElementById("status");
   if (m.eventType === "no_event") {
@@ -1033,22 +1034,22 @@ function updateMetrics() {
     status.style.borderColor = "rgba(115,226,156,0.28)";
     status.style.color = "var(--good)";
   } else if (m.rollEvent) {
-    status.textContent = "Risky Repeated Pattern — severe ankle roll";
+    status.textContent = "Injury Risk — severe ankle roll";
     status.style.background = "rgba(255,107,107,0.13)";
     status.style.borderColor = "rgba(255,107,107,0.32)";
     status.style.color = "var(--bad)";
-  } else if (risk < 35) {
-    status.textContent = "Acceptable Pattern";
+  } else if (risk < 25) {
+    status.textContent = "Acceptable / Low Load";
     status.style.background = "rgba(115,226,156,0.14)";
     status.style.borderColor = "rgba(115,226,156,0.28)";
     status.style.color = "var(--good)";
-  } else if (risk < 65) {
-    status.textContent = "Caution Pattern";
+  } else if (risk < 45) {
+    status.textContent = "Active Load";
     status.style.background = "rgba(255,202,95,0.13)";
     status.style.borderColor = "rgba(255,202,95,0.30)";
     status.style.color = "var(--warn)";
   } else {
-    status.textContent = "Risky Repeated Pattern";
+    status.textContent = "Injury Risk";
     status.style.background = "rgba(255,107,107,0.13)";
     status.style.borderColor = "rgba(255,107,107,0.32)";
     status.style.color = "var(--bad)";
