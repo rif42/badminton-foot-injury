@@ -36,7 +36,6 @@ except ModuleNotFoundError:  # pragma: no cover - internal path may not exist in
 
 from .injury_risk import RiskModel  # isort: split
 from .risk_overlay import RiskOverlay  # isort: split
-from .smoothing import LandmarkSmoother  # isort: split
 
 
 __all__ = [
@@ -161,43 +160,6 @@ class PoseDetector:
 
         return frame
 
-    def draw_landmarks_dict(
-        self,
-        frame: np.ndarray,
-        landmarks: Dict[str, Tuple[float, float, float, float]],
-        landmark_color: Tuple[int, int, int] = LANDMARK_COLOR,
-        connection_color: Tuple[int, int, int] = CONNECTION_COLOR,
-    ) -> np.ndarray:
-        """Overlay lower-body landmarks from a ``{name: (x, y, z, visibility)}`` dict.
-
-        This is the smoothed counterpart to :meth:`draw_landmarks`: the live
-        loop smooths the normalized landmarks and draws from the dict so the
-        on-screen skeleton does not jitter. Mutates ``frame`` in place.
-        """
-        height, width, _ = frame.shape
-        index_to_name = {idx: name for name, idx in LOWER_BODY_LANDMARKS.items()}
-
-        def _point(name: str) -> Optional[Tuple[int, int]]:
-            lm = landmarks.get(name)
-            if lm is None or lm[3] < VISIBILITY_THRESHOLD:
-                return None
-            return int(lm[0] * width), int(lm[1] * height)
-
-        for start_idx, end_idx in LOWER_BODY_CONNECTIONS:
-            start = _point(index_to_name[start_idx])
-            end = _point(index_to_name[end_idx])
-            if start is not None and end is not None:
-                cv2.line(
-                    frame, start, end, connection_color, CONNECTION_THICKNESS
-                )
-
-        for name in LOWER_BODY_LANDMARKS:
-            point = _point(name)
-            if point is not None:
-                cv2.circle(frame, point, LANDMARK_RADIUS, landmark_color, -1)
-
-        return frame
-
     @staticmethod
     def get_lower_body_landmarks(
         landmarks: NormalizedLandmarkList,
@@ -266,8 +228,6 @@ def main(
 
     risk_model = RiskModel(risk_profile)
     risk_overlay = RiskOverlay()
-    landmark_smoother = LandmarkSmoother()
-    last_frame_time: Optional[float] = None
 
     consecutive_frame_failures = 0
     try:
@@ -289,27 +249,11 @@ def main(
                 consecutive_frame_failures = 0
                 # Detect and draw on the original frame so left/right labels
                 # correspond to the physical body.
-                raw_landmarks = detector.process(frame)
-                if raw_landmarks is not None:
-                    now = time.monotonic()
-                    dt = (
-                        now - last_frame_time
-                        if last_frame_time is not None
-                        else 1.0 / 30.0
-                    )
-                    last_frame_time = now
-                    # Smooth once per frame so the drawn skeleton and the risk
-                    # model both see the filtered landmark positions.
-                    lower_body = detector.get_lower_body_landmarks(raw_landmarks)
-                    if lower_body:
-                        lower_body = landmark_smoother.smooth_normalized(
-                            lower_body, dt
-                        )
-                        detector.draw_landmarks_dict(frame, lower_body)
-                        risk_result = risk_model.update(lower_body, frame.shape)
-                    else:
-                        landmark_smoother.reset()
-                        risk_result = None
+                landmarks = detector.process(frame)
+                if landmarks is not None:
+                    detector.draw_landmarks(frame, landmarks)
+                    lower_body = detector.get_lower_body_landmarks(landmarks)
+                    risk_result = risk_model.update(lower_body, frame.shape)
                     risk_overlay.draw(
                         frame,
                         risk_result,
@@ -317,15 +261,13 @@ def main(
                     )
                     if debug:
                         print(
-                            f"Detected {len(raw_landmarks.landmark)} landmarks. "
+                            f"Detected {len(landmarks.landmark)} landmarks. "
                             "Lower-body visibilities:"
                         )
                         for name, idx in LOWER_BODY_LANDMARKS.items():
-                            lm = raw_landmarks.landmark[idx]
+                            lm = landmarks.landmark[idx]
                             print(f"  {name}: {lm.visibility:.2f}")
                 else:
-                    landmark_smoother.reset()
-                    last_frame_time = None
                     risk_overlay.draw(
                         frame,
                         None,

@@ -12,8 +12,6 @@ from badminton_risk.baseline_risk import (
     _CORE_WEIGHT_LANDING_ASYMMETRY,
     angle_at,
     ankle_foot_alignment_risk,
-    ankle_roll_angle,
-    ankle_roll_risk,
     clamp,
     core_risk_score,
     distance,
@@ -223,156 +221,6 @@ def test_ankle_foot_alignment_rejects_non_3d_points(idx):
     args = [points[i] if i != idx else invalid for i in range(4)] + [1.4]
     with pytest.raises(AssertionError):
         ankle_foot_alignment_risk(*args)
-
-
-def _neutral_foot_pose() -> tuple:
-    """Knee above ankle, ankle above the heel-foot line (neutral stance)."""
-    knee = (0.0, 0.6, 0.0)
-    ankle = (0.0, 0.1, 0.0)
-    heel = (0.0, 0.0, -0.15)
-    foot_index = (0.0, 0.0, 0.15)
-    return knee, ankle, heel, foot_index
-
-
-def test_ankle_roll_neutral_stance_is_zero():
-    knee, ankle, heel, foot_index = _neutral_foot_pose()
-    assert ankle_roll_angle(knee, ankle, heel, foot_index) == pytest.approx(0.0, abs=1e-3)
-
-
-def test_ankle_roll_fully_rolled_is_ninety():
-    # Foot plane parallel to the shank axis => roll of ~90 degrees.
-    knee = (0.0, 0.6, 0.0)
-    ankle = (0.0, 0.1, 0.0)
-    heel = (0.1, 0.1, 0.1)
-    foot_index = (-0.1, 0.1, 0.1)
-    angle = ankle_roll_angle(knee, ankle, heel, foot_index)
-    assert angle is not None
-    assert abs(angle) == pytest.approx(90.0, abs=1e-3)
-
-
-def test_ankle_roll_sign_flips_with_roll_direction():
-    knee, ankle, _, _ = _neutral_foot_pose()
-    # Roll the foot in one direction then the mirror direction.
-    heel_pos = (0.1, 0.0, -0.1)
-    foot_pos = (-0.1, 0.0, -0.1)
-    heel_neg = (-0.1, 0.0, -0.1)
-    foot_neg = (0.1, 0.0, -0.1)
-    a = ankle_roll_angle(knee, ankle, heel_pos, foot_pos)
-    b = ankle_roll_angle(knee, ankle, heel_neg, foot_neg)
-    assert a is not None and b is not None
-    assert a == pytest.approx(-b, abs=1e-3)
-    assert abs(a) > 10.0
-
-
-def test_ankle_roll_degenerate_triangle_returns_none():
-    # Ankle, heel, foot_index collinear => no stable plane normal.
-    knee, ankle, _, _ = _neutral_foot_pose()
-    heel = (0.0, 0.1, -0.05)
-    foot_index = (0.0, 0.1, 0.05)
-    assert ankle_roll_angle(knee, ankle, heel, foot_index) is None
-
-
-def test_ankle_roll_angle_rejects_non_3d_points():
-    with pytest.raises(AssertionError):
-        ankle_roll_angle((0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0))
-
-
-def test_ankle_roll_risk_below_deadband_is_zero():
-    risk, event = ankle_roll_risk(5.0)
-    assert risk == pytest.approx(0.0)
-    assert event is False
-
-
-def test_ankle_roll_risk_max_is_one_and_severe():
-    risk, event = ankle_roll_risk(60.0)
-    assert risk == pytest.approx(1.0)
-    assert event is True
-
-
-def test_ankle_roll_risk_severe_threshold():
-    risk, event = ankle_roll_risk(45.0)
-    assert event is True
-    assert risk == pytest.approx(1.0)
-    _, event = ankle_roll_risk(44.0)
-    assert event is False
-
-
-def test_ankle_roll_risk_uses_magnitude():
-    risk_pos, _ = ankle_roll_risk(30.0)
-    risk_neg, _ = ankle_roll_risk(-30.0)
-    assert risk_pos == risk_neg
-
-
-def test_core_risk_unplanted_side_skips_roll():
-    # A rolled pose that would otherwise flag; with the foot not planted the
-    # roll risk must be zero and no event may fire.
-    knee = (0.0, 0.6, 0.0)
-    ankle = (0.0, 0.1, 0.0)
-    heel = (0.1, 0.1, 0.1)
-    foot_index = (-0.1, 0.1, 0.1)
-    pose = LowerBodyPose(
-        left_hip=(0.0, 1.0, 0.0),
-        right_hip=(0.0, 1.0, 0.0),
-        left_knee=knee,
-        right_knee=knee,
-        left_ankle=ankle,
-        right_ankle=ankle,
-        left_heel=heel,
-        right_heel=heel,
-        left_foot_index=foot_index,
-        right_foot_index=foot_index,
-    )
-    result = core_risk_score(pose, planted=(False, False))
-    assert result["ankle_roll_risk"] == pytest.approx(0.0)
-    assert result["ankle_roll_event"] is False
-    assert result["ankle_roll_angle_deg"] is None
-
-
-def test_core_risk_roll_event_fires_when_planted():
-    knee = (0.0, 0.6, 0.0)
-    ankle = (0.0, 0.1, 0.0)
-    heel = (0.1, 0.1, 0.1)
-    foot_index = (-0.1, 0.1, 0.1)
-    pose = LowerBodyPose(
-        left_hip=(0.0, 1.0, 0.0),
-        right_hip=(0.0, 1.0, 0.0),
-        left_knee=knee,
-        right_knee=knee,
-        left_ankle=ankle,
-        right_ankle=ankle,
-        left_heel=heel,
-        right_heel=heel,
-        left_foot_index=foot_index,
-        right_foot_index=foot_index,
-    )
-    result = core_risk_score(pose, planted=(True, True))
-    assert result["ankle_roll_event"] is True
-    assert result["ankle_roll_risk"] == pytest.approx(1.0)
-
-
-def test_core_risk_roll_baseline_zeroes_neutral_foot():
-    # A foot with a natural standing roll; once its baseline is calibrated,
-    # the same angle contributes no risk.
-    knee, ankle, _, _ = _neutral_foot_pose()
-    heel = (0.05, 0.0, -0.15)
-    foot_index = (0.05, 0.0, 0.15)
-    angle = ankle_roll_angle(knee, ankle, heel, foot_index)
-    assert angle is not None and abs(angle) > 5.0
-    pose = LowerBodyPose(
-        left_hip=(0.0, 1.0, 0.0),
-        right_hip=(0.0, 1.0, 0.0),
-        left_knee=knee,
-        right_knee=knee,
-        left_ankle=ankle,
-        right_ankle=ankle,
-        left_heel=heel,
-        right_heel=heel,
-        left_foot_index=foot_index,
-        right_foot_index=foot_index,
-    )
-    result = core_risk_score(pose, planted=(True, True), roll_baseline=(angle, angle))
-    assert result["ankle_roll_risk"] == pytest.approx(0.0, abs=1e-6)
-    assert result["ankle_roll_event"] is False
 
 
 @pytest.mark.parametrize("bad_length", [0.0, -1.0])
@@ -593,9 +441,6 @@ def test_core_risk_score_returns_expected_keys():
     assert set(result.keys()) == {
         "knee_stiffness_risk",
         "ankle_foot_alignment_risk",
-        "ankle_roll_risk",
-        "ankle_roll_angle_deg",
-        "ankle_roll_event",
         "hip_displacement_proxy",
         "landing_asymmetry_score",
         "core_risk",

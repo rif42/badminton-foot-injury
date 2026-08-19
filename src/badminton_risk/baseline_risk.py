@@ -23,19 +23,6 @@ _ANKLE_FOOT_FOOT_ANGLE_THRESHOLD = 45.0
 _ANKLE_FOOT_KNEE_DEVIATION_WEIGHT = 0.70
 _ANKLE_FOOT_FOOT_ANGLE_WEIGHT = 0.30
 
-# Thresholds for ankle roll (inversion/eversion) risk.
-# Roll deviations at or below the deadband contribute no risk; deviations at
-# or above ``_ANKLE_ROLL_MAX_RISK_DEG`` map to risk 1.0 (linear in between).
-_ANKLE_ROLL_NEUTRAL_DEADBAND_DEG = 10.0
-_ANKLE_ROLL_MAX_RISK_DEG = 45.0
-# A roll deviation at or above this angle flags a severe roll event. This is
-# beyond the ~30 deg cited as an injury threshold and far past normal dynamic
-# frontal-plane excursion, so it is treated as an injury moment.
-_ANKLE_ROLL_SEVERE_DEG = 45.0
-# Minimum normalized cross-product magnitude for a well-conditioned foot
-# triangle (ankle/heel/foot_index near-collinear => unstable angle => None).
-_ANKLE_ROLL_MIN_CROSS_SIN = 0.15
-
 # Threshold for hip displacement proxy; a displacement equal to one full leg length
 # maps to the maximum proxy value.
 _HIP_DISPLACEMENT_THRESHOLD = 1.0
@@ -58,10 +45,7 @@ _LANDING_ANKLE_HEIGHT_WEIGHT = 0.20
 
 # Core risk score composition weights. They intentionally sum to 1.0.
 _CORE_WEIGHT_KNEE_STIFFNESS = 0.20
-# Ankle-foot alignment was split (0.30 -> 0.20 alignment + 0.10 roll) so the
-# new ankle-roll component participates without breaking the sum-to-1.0 rule.
-_CORE_WEIGHT_ANKLE_FOOT_ALIGNMENT = 0.20
-_CORE_WEIGHT_ANKLE_ROLL = 0.10
+_CORE_WEIGHT_ANKLE_FOOT_ALIGNMENT = 0.30
 _CORE_WEIGHT_HIP_DISPLACEMENT = 0.15
 _CORE_WEIGHT_LANDING_ASYMMETRY = 0.35
 
@@ -114,15 +98,6 @@ def midpoint(a: Point, b: Point) -> Point:
     assert len(a) == 3, "point a must be a 3-D coordinate"
     assert len(b) == 3, "point b must be a 3-D coordinate"
     return cast(Point, tuple((a_i + b_i) / 2.0 for a_i, b_i in zip(a, b)))
-
-
-def _cross(a: Point, b: Point) -> Point:
-    """Return the 3-D cross product ``a x b``."""
-    return (
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-    )
 
 
 def angle_at(a: Point, b: Point, c: Point) -> float:
@@ -265,101 +240,6 @@ def ankle_foot_alignment_risk(
         _ANKLE_FOOT_KNEE_DEVIATION_WEIGHT * knee_dev_score
         + _ANKLE_FOOT_FOOT_ANGLE_WEIGHT * angle_score
     )
-
-
-def ankle_roll_angle(
-    knee: Point,
-    ankle: Point,
-    heel: Point,
-    foot_index: Point,
-) -> float | None:
-    """Return the signed ankle roll (inversion/eversion) angle in degrees.
-
-    The roll is the tilt of the foot plane relative to the shank axis:
-
-        t = knee - ankle                          shank axis
-        n = (heel - ankle) x (foot_index - ankle)  foot-plane normal
-        theta = 90 - angle(n, t)                   degrees
-
-    ``theta`` is ``0`` in a neutral stance (foot plane perpendicular to the
-    shank) and approaches ``+/-90`` as the foot rolls fully sideways. The
-    magnitude is the roll angle; the sign encodes the direction, which maps to
-    inversion vs eversion depending on the foot side and camera mirroring, so
-    risk functions use the magnitude only.
-
-    Returns ``None`` when the foot triangle is degenerate (near-collinear
-    ankle/heel/foot_index landmarks) because the plane normal is then
-    ill-conditioned and the angle is meaningless.
-
-    Args:
-        knee: A 3-D point ``(x, y, z)`` representing the knee landmark.
-        ankle: A 3-D point ``(x, y, z)`` representing the ankle landmark.
-        heel: A 3-D point ``(x, y, z)`` representing the heel landmark.
-        foot_index: A 3-D point ``(x, y, z)`` representing the forefoot /
-            metatarsal landmark.
-
-    Returns:
-        The signed roll angle in degrees clamped to ``[-90.0, 90.0]``, or
-        ``None`` when the foot triangle is degenerate.
-
-    Raises:
-        AssertionError: If any landmark is not a 3-tuple.
-    """
-    assert len(knee) == 3, "knee must be a 3-D coordinate"
-    assert len(ankle) == 3, "ankle must be a 3-D coordinate"
-    assert len(heel) == 3, "heel must be a 3-D coordinate"
-    assert len(foot_index) == 3, "foot_index must be a 3-D coordinate"
-
-    shank = (knee[0] - ankle[0], knee[1] - ankle[1], knee[2] - ankle[2])
-    heel_arm = (heel[0] - ankle[0], heel[1] - ankle[1], heel[2] - ankle[2])
-    toe_arm = (
-        foot_index[0] - ankle[0],
-        foot_index[1] - ankle[1],
-        foot_index[2] - ankle[2],
-    )
-    normal = _cross(heel_arm, toe_arm)
-
-    shank_len = math.sqrt(sum(v * v for v in shank))
-    heel_len = math.sqrt(sum(v * v for v in heel_arm))
-    toe_len = math.sqrt(sum(v * v for v in toe_arm))
-    normal_len = math.sqrt(sum(v * v for v in normal))
-    if shank_len < 1e-9 or normal_len < 1e-9:
-        return None
-    # sin of the angle between the two arms; near 0 => near-collinear triangle.
-    if normal_len / max(heel_len * toe_len, 1e-12) < _ANKLE_ROLL_MIN_CROSS_SIN:
-        return None
-
-    cos = clamp(
-        sum(n_i * t_i for n_i, t_i in zip(normal, shank)) / (normal_len * shank_len),
-        -1.0,
-        1.0,
-    )
-    return 90.0 - math.degrees(math.acos(cos))
-
-
-def ankle_roll_risk(deviation_deg: float) -> tuple[float, bool]:
-    """Return ``(risk, severe_event)`` for a roll deviation from the baseline.
-
-    Deviations at or below ``_ANKLE_ROLL_NEUTRAL_DEADBAND_DEG`` yield ``0.0``
-    risk; deviations at or above ``_ANKLE_ROLL_MAX_RISK_DEG`` yield ``1.0``,
-    linearly interpolated in between. ``severe_event`` is ``True`` when the
-    deviation reaches ``_ANKLE_ROLL_SEVERE_DEG`` — a magnitude beyond normal
-    physiological inversion/eversion range that indicates an injury moment.
-
-    Args:
-        deviation_deg: Signed roll deviation in degrees (magnitude is used).
-
-    Returns:
-        A ``(risk, severe_event)`` tuple with ``risk`` in ``[0.0, 1.0]``.
-    """
-    magnitude = abs(deviation_deg)
-    risk = clamp(
-        (magnitude - _ANKLE_ROLL_NEUTRAL_DEADBAND_DEG)
-        / (_ANKLE_ROLL_MAX_RISK_DEG - _ANKLE_ROLL_NEUTRAL_DEADBAND_DEG),
-        0.0,
-        1.0,
-    )
-    return risk, magnitude >= _ANKLE_ROLL_SEVERE_DEG
 
 
 def hip_displacement_proxy(
@@ -517,30 +397,16 @@ def _leg_length(hip: Point, knee: Point, ankle: Point) -> float:
     return distance(hip, knee) + distance(knee, ankle)
 
 
-def core_risk_score(
-    pose: LowerBodyPose,
-    planted: tuple[bool, bool] = (True, True),
-    roll_baseline: tuple[float | None, float | None] = (None, None),
-) -> dict:
+def core_risk_score(pose: LowerBodyPose) -> dict:
     """Return the composed core injury-risk score and its sub-score breakdown.
 
-    The function averages bilateral cues and combines normalized sub-scores:
-    knee stiffness, ankle-foot alignment, ankle roll, hip displacement, and
+    The function averages bilateral cues and combines four normalized
+    sub-scores: knee stiffness, ankle-foot alignment, hip displacement, and
     landing asymmetry. The composition weights are module-level constants
     (``_CORE_WEIGHT_*``) and intentionally sum to ``1.0``.
 
-    Ankle roll is only evaluated for a side whose foot is planted (``planted``
-    flag) and is measured as the deviation of the roll angle from that side's
-    neutral baseline (``roll_baseline``). A missing/degenerate foot triangle or
-    an unplanted foot contributes zero roll risk.
-
     Args:
         pose: A ``LowerBodyPose`` containing 3-D landmarks for both legs.
-        planted: Per-side ``(left, right)`` booleans; ``False`` means that
-            side's foot is not on the ground and its roll is skipped.
-        roll_baseline: Per-side ``(left, right)`` neutral roll angles in
-            degrees, or ``None`` when not yet calibrated (falls back to an
-            absolute angle baseline of ``0``).
 
     Returns:
         A dictionary with the following keys:
@@ -549,12 +415,6 @@ def core_risk_score(
           ``[0.0, 1.0]``.
         - ``ankle_foot_alignment_risk``: average bilateral ankle-foot
           alignment risk in ``[0.0, 1.0]``.
-        - ``ankle_roll_risk``: average bilateral ankle-roll risk in
-          ``[0.0, 1.0]``.
-        - ``ankle_roll_angle_deg``: average absolute roll angle of the planted
-          sides in degrees, or ``None`` when no side could be evaluated.
-        - ``ankle_roll_event``: ``True`` when either planted side shows a
-          severe roll event.
         - ``hip_displacement_proxy``: average bilateral pelvis displacement
           proxy in ``[0.0, 1.0]``.
         - ``landing_asymmetry_score``: left-right landing asymmetry score in
@@ -591,38 +451,9 @@ def core_risk_score(
         pose.left_ankle, pose.right_ankle,
     )
 
-    def _roll_side(side: str, is_planted: bool, baseline: float | None):
-        """Return ``(risk, angle, event)`` for one side's ankle roll."""
-        if not is_planted:
-            return 0.0, None, False
-        angle = ankle_roll_angle(
-            getattr(pose, f"{side}_knee"),
-            getattr(pose, f"{side}_ankle"),
-            getattr(pose, f"{side}_heel"),
-            getattr(pose, f"{side}_foot_index"),
-        )
-        if angle is None:
-            return 0.0, None, False
-        deviation = angle if baseline is None else angle - baseline
-        risk, event = ankle_roll_risk(deviation)
-        return risk, angle, event
-
-    left_roll_risk, left_roll_angle, left_roll_event = _roll_side(
-        "left", planted[0], roll_baseline[0]
-    )
-    right_roll_risk, right_roll_angle, right_roll_event = _roll_side(
-        "right", planted[1], roll_baseline[1]
-    )
-    roll_angles = [
-        a for a in (left_roll_angle, right_roll_angle) if a is not None
-    ]
-    ankle_roll = (left_roll_risk + right_roll_risk) / 2.0
-    ankle_roll_event = left_roll_event or right_roll_event
-
     core = (
         _CORE_WEIGHT_KNEE_STIFFNESS * knee_stiffness
         + _CORE_WEIGHT_ANKLE_FOOT_ALIGNMENT * ankle_alignment
-        + _CORE_WEIGHT_ANKLE_ROLL * ankle_roll
         + _CORE_WEIGHT_HIP_DISPLACEMENT * hip_disp
         + _CORE_WEIGHT_LANDING_ASYMMETRY * asym
     )
@@ -630,11 +461,6 @@ def core_risk_score(
     return {
         "knee_stiffness_risk": knee_stiffness,
         "ankle_foot_alignment_risk": ankle_alignment,
-        "ankle_roll_risk": ankle_roll,
-        "ankle_roll_angle_deg": (
-            sum(roll_angles) / len(roll_angles) if roll_angles else None
-        ),
-        "ankle_roll_event": ankle_roll_event,
         "hip_displacement_proxy": hip_disp,
         "landing_asymmetry_score": asym,
         "core_risk": clamp(core, 0.0, 1.0),

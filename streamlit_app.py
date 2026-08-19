@@ -163,8 +163,6 @@ else:
             "core_risk",
             "knee_stiffness_risk",
             "ankle_foot_alignment_risk",
-            "ankle_roll_risk",
-            "ankle_roll_angle_deg",
             "hip_displacement_proxy",
             "landing_asymmetry_score",
         ]
