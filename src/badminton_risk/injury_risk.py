@@ -8,12 +8,9 @@ smooths the output over time.
 from __future__ import annotations
 
 import math
-import statistics
 from collections import deque
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
-
-from .baseline_risk import ankle_roll_angle
 
 
 @dataclass(frozen=True)
@@ -49,10 +46,9 @@ class RiskResult:
 
 WEIGHTS = {
     "hip_trajectory_deviation": 0.15,
-    "knee_flexion": 0.30,
-    "foot_alignment": 0.20,
+    "knee_flexion": 0.35,
+    "foot_alignment": 0.25,
     "landing_pitch": 0.25,
-    "ankle_roll": 0.10,
 }
 
 PROFILE_PRESETS = {
@@ -82,12 +78,6 @@ PROFILE_PRESETS = {
                 {"min": -2, "r": 0.35},
                 {"min": -6, "r": 0.7},
                 {"min": float("-inf"), "r": 0.9},
-            ],
-            "ankle_roll": [
-                {"max": 10, "r": 0.05},
-                {"max": 25, "r": 0.4},
-                {"max": 45, "r": 0.85},
-                {"max": float("inf"), "r": 1.0},
             ],
         },
         "interactions": {
@@ -125,12 +115,6 @@ PROFILE_PRESETS = {
                 {"min": -8, "r": 0.7},
                 {"min": float("-inf"), "r": 0.9},
             ],
-            "ankle_roll": [
-                {"max": 12, "r": 0.05},
-                {"max": 30, "r": 0.4},
-                {"max": 45, "r": 0.85},
-                {"max": float("inf"), "r": 1.0},
-            ],
         },
         "interactions": {
             "knee_x_hip": 12,
@@ -138,7 +122,7 @@ PROFILE_PRESETS = {
             "knee_x_pitch": 8,
             "hip_x_foot": 6,
         },
-        "bands": {"green_max": 25, "yellow_max": 45},
+        "bands": {"green_max": 29, "yellow_max": 59},
     },
     "aggressive": {
         "label": "Aggressive",
@@ -166,12 +150,6 @@ PROFILE_PRESETS = {
                 {"min": -5, "r": 0.35},
                 {"min": -10, "r": 0.7},
                 {"min": float("-inf"), "r": 0.9},
-            ],
-            "ankle_roll": [
-                {"max": 15, "r": 0.05},
-                {"max": 35, "r": 0.4},
-                {"max": 50, "r": 0.85},
-                {"max": float("inf"), "r": 1.0},
             ],
         },
         "interactions": {
@@ -267,11 +245,6 @@ BODY_SCALE_JOINTS: Tuple[Tuple[str, str], ...] = (
 # treated as no meaningful athletic movement.
 IDLE_MOVEMENT_THRESHOLD = 0.015
 
-# Status hysteresis margin: the live status rises at the profile band edges
-# but only clears below the edge minus this fraction of the band, preventing
-# label flicker when the smoothed total hovers near a boundary.
-_STATUS_HYSTERESIS_FRACTION = 0.15
-
 
 def has_required_landmarks(
     landmarks: dict[str, tuple[float, float, float, float]]
@@ -360,26 +333,6 @@ def compute_foot_alignment(
     velocity_angle = _vector_angle(hip_velocity)
     diff = abs((foot_angle - velocity_angle + 180) % 360 - 180)
     return diff
-
-
-def compute_ankle_roll(
-    landmarks: dict[str, tuple[float, float, float, float]],
-    side: str,
-) -> Optional[float]:
-    """Signed ankle roll (inversion/eversion) angle in degrees, or None.
-
-    Uses the normalized 3-D landmark coordinates (``x, y, z``). Returns ``None``
-    when the foot triangle is degenerate (near-collinear landmarks) or the
-    side's landmarks are missing.
-    """
-    try:
-        knee = landmarks[f"{side}_knee"][:3]
-        ankle = landmarks[f"{side}_ankle"][:3]
-        heel = landmarks[f"{side}_heel"][:3]
-        foot = landmarks[f"{side}_foot_index"][:3]
-    except KeyError:
-        return None
-    return ankle_roll_angle(knee, ankle, heel, foot)
 
 
 def compute_hip_trajectory_deviation(
@@ -474,20 +427,6 @@ class RiskModel:
         self._hip_history: deque[tuple[float, float]] = deque(maxlen=hip_history_size)
         self._result_history: deque[RiskResult] = deque(maxlen=smoothing_window)
         self._was_idle: bool = False
-        self._last_status: str = "Optimal"
-        # Ankle-roll state: rolling ankle-height windows for the planted gate
-        # and per-side neutral baselines calibrated during idle frames.
-        self._ankle_history: Dict[str, deque] = {
-            side: deque(maxlen=15) for side in ("left", "right")
-        }
-        self._roll_baseline_samples: Dict[str, List[float]] = {
-            "left": [],
-            "right": [],
-        }
-        self._roll_baseline: Dict[str, Optional[float]] = {
-            "left": None,
-            "right": None,
-        }
 
     def set_profile(self, profile_key: str) -> None:
         """Switch to a built-in profile."""
@@ -510,7 +449,6 @@ class RiskModel:
             {"label": "Knee Overload", "txt": "Low", "cls": "ok"},
             {"label": "Foot Alignment", "txt": "Low", "cls": "ok"},
             {"label": "Kinetic Shock", "txt": "Low", "cls": "ok"},
-            {"label": "Ankle Roll", "txt": "Low", "cls": "ok"},
         ]
         return RiskResult(
             total_risk=0.0,
@@ -550,8 +488,6 @@ class RiskModel:
         if currently_idle:
             if not self._was_idle:
                 self._reset_smoothing()
-            self._calibrate_roll(landmarks, frame_shape)
-            self._last_status = "Idle"
             result = self._idle_result()
             self._result_history.append(result)
             self._was_idle = True
@@ -570,56 +506,6 @@ class RiskModel:
         self._result_history.append(result)
         self._was_idle = False
         return self._smooth_result()
-
-    def _calibrate_roll(
-        self,
-        landmarks: dict[str, tuple[float, float, float, float]],
-        frame_shape: tuple[int, int],
-    ) -> None:
-        """Accumulate neutral-stance roll samples and lock in baselines.
-
-        Called on idle frames only. Once a side has enough samples the median
-        becomes that side's neutral roll baseline, so subsequent roll risk is
-        measured as a deviation from the subject's natural stance angle.
-        """
-        for side in ("left", "right"):
-            if self._roll_baseline[side] is not None:
-                continue
-            angle = compute_ankle_roll(landmarks, side)
-            if angle is None:
-                continue
-            samples = self._roll_baseline_samples[side]
-            samples.append(angle)
-            if len(samples) >= 15:
-                self._roll_baseline[side] = statistics.median(samples)
-
-    def _ankle_roll_deviation(
-        self,
-        landmarks: dict[str, tuple[float, float, float, float]],
-        frame_shape: tuple[int, int],
-        side: str,
-    ) -> float:
-        """Signed roll deviation from the neutral baseline (degrees).
-
-        Returns ``0.0`` when the foot is not planted (ankle well above its
-        rolling minimum height), when the foot triangle is degenerate, or when
-        the landmarks are missing, so dangling/swing feet never false-alarm.
-        """
-        try:
-            ankle_y = _to_px(landmarks[f"{side}_ankle"], frame_shape)[1]
-        except KeyError:
-            return 0.0
-        history = self._ankle_history[side]
-        history.append(ankle_y)
-        body_scale = compute_body_scale(landmarks, frame_shape) or 0.0
-        planted = body_scale > 0 and (ankle_y - min(history)) < 0.25 * body_scale
-        if not planted:
-            return 0.0
-        angle = compute_ankle_roll(landmarks, side)
-        if angle is None:
-            return 0.0
-        baseline = self._roll_baseline.get(side)
-        return angle if baseline is None else angle - baseline
 
     def _hip_center_px(
         self,
@@ -654,7 +540,6 @@ class RiskModel:
                 landmarks, side, frame_shape, hip_velocity
             ),
             "landing_pitch": compute_landing_pitch(landmarks, side, frame_shape),
-            "ankle_roll": self._ankle_roll_deviation(landmarks, frame_shape, side),
         }
 
     def _compute_risk(self, params: dict[str, float]) -> RiskResult:
@@ -672,26 +557,12 @@ class RiskModel:
         total = compute_total_risk(base_score, interaction_score)
 
         bands = profile.bands
-        green_clear = bands["green_max"] * (1.0 - _STATUS_HYSTERESIS_FRACTION)
-        yellow_clear = bands["yellow_max"] * (1.0 - _STATUS_HYSTERESIS_FRACTION)
-        if total > bands["yellow_max"] or (
-            self._last_status == "High Risk" and total > yellow_clear
-        ):
-            status = "High Risk"
-        elif total > bands["green_max"] or (
-            self._last_status == "Caution" and total > green_clear
-        ):
+        if total <= bands["green_max"]:
+            status = "Optimal"
+        elif total <= bands["yellow_max"]:
             status = "Caution"
         else:
-            status = "Optimal"
-        self._last_status = status
-
-        roll_alert = risk_level_from_normalized(normalized["ankle_roll"])
-        if roll_alert["cls"] != "ok":
-            roll_alert = {
-                **roll_alert,
-                "txt": f"{roll_alert['txt']} {params['ankle_roll']:.0f}°",
-            }
+            status = "High Risk"
 
         alerts = [
             {
@@ -710,7 +581,6 @@ class RiskModel:
                 "label": "Kinetic Shock",
                 **risk_level_from_normalized(normalized["landing_pitch"]),
             },
-            {"label": "Ankle Roll", **roll_alert},
         ]
 
         return RiskResult(

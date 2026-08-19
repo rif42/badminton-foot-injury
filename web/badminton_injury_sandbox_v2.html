@@ -224,7 +224,6 @@
       <div id="status" class="status">No Event / Low Concern</div>
       <div class="bar"><div id="riskFill" class="fill"></div></div>
       <div class="small">Final risk score: <b id="finalRisk">0</b>/100</div>
-      <div class="small">Scale: green = low load · yellow = active load · red = injury risk</div>
     </div>
 
     <h2>Movement Context</h2>
@@ -254,13 +253,6 @@
 
       <label>Fatigue modifier <span id="fatigueLabel">0.10</span></label>
       <input id="fatigue" type="range" min="0" max="1" step="0.01" value="0.10" />
-    </div>
-
-    <h2>Ankle Roll Calibration</h2>
-    <div class="card">
-      <p class="small">Rolls the support foot around its long axis (inversion/eversion) on top of the current pose — the same 3-D foot-plane-vs-shank angle the offline analyzer measures. A deviation ≥ 45° fires the severe roll event (critical).</p>
-      <label>Support-foot roll <span id="rollLabel">0°</span></label>
-      <input id="rollSlider" type="range" min="-70" max="70" step="1" value="0" />
     </div>
 
     <h2>Selected Joint</h2>
@@ -293,8 +285,6 @@
         <button data-preset="risky_pelvis_shift_direction_change">Risky pelvis shift</button>
         <button data-preset="risky_stiff_jump_landing">Risky stiff landing</button>
         <button data-preset="risky_asymmetric_landing">Risky asymmetry</button>
-        <button data-preset="ankle_roll_caution">Ankle roll ~30° (caution)</button>
-        <button data-preset="ankle_roll_critical">Ankle roll 60° (critical)</button>
       </div>
 
       <p class="small" style="margin-top:14px;"><b>Catastrophic stress tests</b></p>
@@ -543,35 +533,6 @@ const presets = {
     right_foot_index:[0.21, 0.08, 0.22],
   },
 
-  // Genuine 3-D ankle rolls (right foot rotated about its long axis from the
-  // neutral stance) — the geometry the offline analyzer's foot-plane-vs-shank
-  // metric actually scores. ~30° sits in the caution band; 60° fires the
-  // severe roll event (>= 45°).
-  ankle_roll_caution: {
-    left_hip:  [-0.22, 1.35, 0.00],
-    right_hip: [ 0.22, 1.35, 0.00],
-    left_knee: [-0.22, 0.76, 0.02],
-    right_knee:[ 0.22, 0.76, 0.02],
-    left_ankle:[-0.22, 0.10, 0.00],
-    right_ankle:[0.22, 0.10, 0.00],
-    left_heel: [-0.24, 0.03, -0.12],
-    right_heel:[0.24, 0.03, -0.12],
-    left_foot_index: [-0.24, 0.03, 0.22],
-    right_foot_index:[0.24, 0.03, 0.22],
-  },
-  ankle_roll_critical: {
-    left_hip:  [-0.22, 1.35, 0.00],
-    right_hip: [ 0.22, 1.35, 0.00],
-    left_knee: [-0.22, 0.76, 0.02],
-    right_knee:[ 0.22, 0.76, 0.02],
-    left_ankle:[-0.22, 0.10, 0.00],
-    right_ankle:[0.22, 0.10, 0.00],
-    left_heel: [-0.24, 0.03, -0.12],
-    right_heel:[0.27, 0.05, -0.12],
-    left_foot_index: [-0.24, 0.03, 0.22],
-    right_foot_index:[0.27, 0.05, 0.22],
-  },
-
   // Backward-compatible names from the first version.
   knee_inward: {
     left_hip:  [-0.20, 1.22, -0.18],
@@ -651,9 +612,6 @@ const presets = {
     left_foot_index: [-0.23, 0.03, -0.12],
     right_foot_index:[0.62, 0.03, 1.88],
   },
-  // NOTE: this is a 2-D XZ proxy (heel shifted sideways). Under the true 3-D
-  // foot-plane-vs-shank metric it deviates only ~3° from neutral — use the
-  // "Ankle roll ~30°/60°" presets or the roll slider for a real roll.
   catastrophic_ankle_roll_proxy_right: {
     left_hip:  [-0.20, 1.25, -0.10],
     right_hip: [ 0.25, 1.18,  0.02],
@@ -822,69 +780,6 @@ function hipCenter() {
   return new THREE.Vector3().addVectors(joints.left_hip.position, joints.right_hip.position).multiplyScalar(0.5);
 }
 
-// --- Ankle roll (mirrors src/badminton_risk/baseline_risk.py ankle_roll_angle) ---
-// The roll is the tilt of the foot plane (ankle/heel/foot_index) relative to
-// the shank axis: theta = 90 - angle(foot-plane normal, shank). The magnitude
-// is the roll angle; the sign encodes inversion/eversion (side- and
-// camera-mirror-dependent), so risk uses the magnitude only.
-const ROLL_DEADBAND_DEG = 10;    // deviations at or below this: zero risk
-const ROLL_MAX_RISK_DEG = 45;    // at or above this: risk 1.0 (linear between)
-const ROLL_SEVERE_DEG = 45;      // at or above this: severe roll event (critical)
-const ROLL_MIN_CROSS_SIN = 0.15; // below this the foot triangle is degenerate
-
-function rollAngleFromVectors(knee, ankle, heel, toe) {
-  const shank = new THREE.Vector3().subVectors(knee, ankle);
-  const heelArm = new THREE.Vector3().subVectors(heel, ankle);
-  const toeArm = new THREE.Vector3().subVectors(toe, ankle);
-  const normal = new THREE.Vector3().crossVectors(heelArm, toeArm);
-  const shankLen = shank.length();
-  const heelLen = heelArm.length();
-  const toeLen = toeArm.length();
-  const normalLen = normal.length();
-  if (shankLen < 1e-9 || normalLen < 1e-9) return null;
-  if (normalLen / Math.max(heelLen * toeLen, 1e-12) < ROLL_MIN_CROSS_SIN) return null;
-  const cos = THREE.MathUtils.clamp(normal.dot(shank) / (normalLen * shankLen), -1, 1);
-  return 90 - THREE.MathUtils.radToDeg(Math.acos(cos));
-}
-
-function ankleRollAngle(side) {
-  return rollAngleFromVectors(
-    joints[`${side}_knee`].position,
-    joints[`${side}_ankle`].position,
-    joints[`${side}_heel`].position,
-    joints[`${side}_foot_index`].position,
-  );
-}
-
-// Per-side neutral-stance baseline from the default pose, mirroring the
-// pipeline's idle-frame calibration. Scoring uses the deviation from this
-// baseline, so a neutral stance reads 0° and 45° is a genuine roll.
-const rollBaseline = {};
-for (const side of ["left", "right"]) {
-  const p = defaultPose;
-  const b = rollAngleFromVectors(
-    new THREE.Vector3().fromArray(p[`${side}_knee`]),
-    new THREE.Vector3().fromArray(p[`${side}_ankle`]),
-    new THREE.Vector3().fromArray(p[`${side}_heel`]),
-    new THREE.Vector3().fromArray(p[`${side}_foot_index`]),
-  );
-  rollBaseline[side] = b === null ? 0 : b;
-}
-
-function ankleRollDeviation(side) {
-  const angle = ankleRollAngle(side);
-  if (angle === null) return null;
-  return angle - rollBaseline[side];
-}
-
-function ankleRollRisk(deviationDeg) {
-  const magnitude = Math.abs(deviationDeg);
-  return {
-    risk: THREE.MathUtils.clamp((magnitude - ROLL_DEADBAND_DEG) / (ROLL_MAX_RISK_DEG - ROLL_DEADBAND_DEG), 0, 1),
-    event: magnitude >= ROLL_SEVERE_DEG,
-  };
-}
-
 function kneeFlexion(side) {
   return angleAt(joints[`${side}_hip`].position, joints[`${side}_knee`].position, joints[`${side}_ankle`].position);
 }
@@ -972,26 +867,17 @@ function calculate() {
   const leftKnee = kneeFlexion("left");
   const rightKnee = kneeFlexion("right");
   const kneeRisk = normalizeRiskForKnee(side, eventType);
-  const alignmentRisk = eventType === "no_event" ? 0 : ankleFootAlignmentRisk(side);
+  const ankleRisk = eventType === "no_event" ? 0 : ankleFootAlignmentRisk(side);
   const hipProxy = eventType === "no_event" ? 0 : hipDisplacementProxy(side);
   const asym = eventType === "no_event" ? 0 : landingAsymmetryScore();
   const impact = eventType === "no_event" ? 0 : impactLoadProxy(side);
   const instability = eventType === "no_event" ? 0 : posturalInstabilityScore(side);
   const fatigue = eventType === "no_event" ? 0 : fatigueModifier();
 
-  // Ankle roll: true 3-D foot-plane-vs-shank tilt as a deviation from the
-  // neutral stance. Weights mirror the offline core_risk_score, where the old
-  // single 0.30 alignment term was split into alignment 0.20 + roll 0.10.
-  const rollLeft = ankleRollDeviation("left");
-  const rollRight = ankleRollDeviation("right");
-  const rollDev = side === "left" ? rollLeft : rollRight;
-  const roll = rollDev === null ? { risk: 0, event: false } : ankleRollRisk(rollDev);
-  const rollRisk = eventType === "no_event" ? 0 : roll.risk;
-
-  const core = 0.20 * kneeRisk + 0.20 * alignmentRisk + 0.10 * rollRisk + 0.15 * hipProxy + 0.35 * asym;
+  const core = 0.20 * kneeRisk + 0.30 * ankleRisk + 0.15 * hipProxy + 0.35 * asym;
   const final = THREE.MathUtils.clamp(core + 0.12 * impact + 0.13 * instability + 0.10 * fatigue, 0, 1);
 
-  return { eventType, side, leftKnee, rightKnee, kneeRisk, ankleRisk: alignmentRisk, rollLeft, rollRight, rollDev, rollRisk, rollEvent: roll.event, hipProxy, asym, impact, instability, fatigue, core, final };
+  return { eventType, side, leftKnee, rightKnee, kneeRisk, ankleRisk, hipProxy, asym, impact, instability, fatigue, core, final };
 }
 
 function metricRow(label, value, suffix = "", extra = "") {
@@ -1009,9 +895,6 @@ function updateMetrics() {
     metricRow("Right knee angle", m.rightKnee.toFixed(1), "°"),
     metricRow("Knee stiffness risk", pct(m.kneeRisk), "/100"),
     metricRow("Ankle/foot alignment risk", pct(m.ankleRisk), "/100"),
-    metricRow("Ankle roll deviation (L)", m.rollLeft === null ? "n/a" : m.rollLeft.toFixed(1), "°"),
-    metricRow("Ankle roll deviation (R)", m.rollRight === null ? "n/a" : m.rollRight.toFixed(1), "°"),
-    metricRow("Ankle roll risk", pct(m.rollRisk), "/100", m.rollEvent ? "SEVERE EVENT ≥45°" : ""),
     metricRow("Hip displacement proxy", pct(m.hipProxy), "/100"),
     metricRow("Landing asymmetry score", pct(m.asym), "/100"),
     metricRow("Impact load proxy", pct(m.impact), "/100"),
@@ -1025,7 +908,7 @@ function updateMetrics() {
   document.getElementById("finalRisk").textContent = risk;
   const fill = document.getElementById("riskFill");
   fill.style.width = `${risk}%`;
-  fill.style.background = m.rollEvent ? "var(--bad)" : risk < 25 ? "var(--good)" : risk < 45 ? "var(--warn)" : "var(--bad)";
+  fill.style.background = risk < 35 ? "var(--good)" : risk < 65 ? "var(--warn)" : "var(--bad)";
 
   const status = document.getElementById("status");
   if (m.eventType === "no_event") {
@@ -1033,23 +916,18 @@ function updateMetrics() {
     status.style.background = "rgba(115,226,156,0.14)";
     status.style.borderColor = "rgba(115,226,156,0.28)";
     status.style.color = "var(--good)";
-  } else if (m.rollEvent) {
-    status.textContent = "Injury Risk — severe ankle roll";
-    status.style.background = "rgba(255,107,107,0.13)";
-    status.style.borderColor = "rgba(255,107,107,0.32)";
-    status.style.color = "var(--bad)";
-  } else if (risk < 25) {
-    status.textContent = "Acceptable / Low Load";
+  } else if (risk < 35) {
+    status.textContent = "Acceptable Pattern";
     status.style.background = "rgba(115,226,156,0.14)";
     status.style.borderColor = "rgba(115,226,156,0.28)";
     status.style.color = "var(--good)";
-  } else if (risk < 45) {
-    status.textContent = "Active Load";
+  } else if (risk < 65) {
+    status.textContent = "Caution Pattern";
     status.style.background = "rgba(255,202,95,0.13)";
     status.style.borderColor = "rgba(255,202,95,0.30)";
     status.style.color = "var(--warn)";
   } else {
-    status.textContent = "Injury Risk";
+    status.textContent = "Risky Repeated Pattern";
     status.style.background = "rgba(255,107,107,0.13)";
     status.style.borderColor = "rgba(255,107,107,0.32)";
     status.style.color = "var(--bad)";
@@ -1120,34 +998,6 @@ for (const id of ["impactSpeed", "decel", "wobble", "fatigue"]) {
   });
 }
 
-function applyAnkleRoll(side, rollDeg) {
-  if (rollDeg === 0) return;
-  const ankle = joints[`${side}_ankle`].position;
-  const axis = new THREE.Vector3().subVectors(joints[`${side}_foot_index`].position, joints[`${side}_heel`].position).normalize();
-  const quat = new THREE.Quaternion().setFromAxisAngle(axis, THREE.MathUtils.degToRad(rollDeg));
-  for (const name of [`${side}_heel`, `${side}_foot_index`]) {
-    const p = joints[name].position.clone().sub(ankle).applyQuaternion(quat).add(ankle);
-    joints[name].position.copy(p);
-  }
-}
-
-const rollSlider = document.getElementById("rollSlider");
-const rollLabel = document.getElementById("rollLabel");
-let lastRollVal = 0;
-rollSlider.addEventListener("input", () => {
-  const val = Number(rollSlider.value);
-  applyAnkleRoll(document.getElementById("supportSide").value, val - lastRollVal);
-  lastRollVal = val;
-  rollLabel.textContent = `${val > 0 ? "+" : ""}${val}°`;
-  updateAll();
-});
-
-function resetRollSlider() {
-  rollSlider.value = 0;
-  lastRollVal = 0;
-  rollLabel.textContent = "0°";
-}
-
 const presetMeta = {
   neutral: { eventType: "no_event", supportSide: "right", impactSpeed: 0.20, decel: 0.20, wobble: 0.05, fatigue: 0.00 },
   reset: { eventType: "no_event", supportSide: "right", impactSpeed: 0.20, decel: 0.20, wobble: 0.05, fatigue: 0.00 },
@@ -1166,8 +1016,6 @@ const presetMeta = {
   risky_pelvis_shift_direction_change: { eventType: "direction_change", supportSide: "right", impactSpeed: 0.55, decel: 0.55, wobble: 0.55, fatigue: 0.25 },
   risky_stiff_jump_landing: { eventType: "jump_landing", supportSide: "right", impactSpeed: 0.85, decel: 0.85, wobble: 0.35, fatigue: 0.20 },
   risky_asymmetric_landing: { eventType: "direction_change", supportSide: "left", impactSpeed: 0.55, decel: 0.55, wobble: 0.65, fatigue: 0.35 },
-  ankle_roll_caution: { eventType: "lunge", supportSide: "right", impactSpeed: 0.40, decel: 0.40, wobble: 0.30, fatigue: 0.15 },
-  ankle_roll_critical: { eventType: "lunge", supportSide: "right", impactSpeed: 0.45, decel: 0.45, wobble: 0.35, fatigue: 0.20 },
   knee_inward: { eventType: "lunge", supportSide: "right", impactSpeed: 0.45, decel: 0.45, wobble: 0.45, fatigue: 0.20 },
   stiff_landing: { eventType: "jump_landing", supportSide: "right", impactSpeed: 0.85, decel: 0.85, wobble: 0.35, fatigue: 0.20 },
   asymmetry: { eventType: "direction_change", supportSide: "left", impactSpeed: 0.55, decel: 0.55, wobble: 0.65, fatigue: 0.35 },
@@ -1203,17 +1051,13 @@ for (const btn of document.querySelectorAll("button[data-preset]")) {
     }
 
     applyPresetControls(name);
-    resetRollSlider();
     syncSlidersFromSelected();
     updateAll();
   });
 }
 
 for (const id of ["eventType", "supportSide"]) {
-  document.getElementById(id).addEventListener("change", () => {
-    if (id === "supportSide") resetRollSlider();
-    updateAll();
-  });
+  document.getElementById(id).addEventListener("change", updateAll);
 }
 
 function resize() {

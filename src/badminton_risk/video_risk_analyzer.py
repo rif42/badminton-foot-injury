@@ -11,11 +11,9 @@ import argparse
 import csv
 import json
 import os
-import statistics
 import sys
 import tempfile
 import urllib.request
-from collections import deque
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -32,10 +30,9 @@ absl.logging.set_verbosity(absl.logging.ERROR)
 
 import mediapipe as mp  # noqa: E402
 
-from .baseline_risk import LowerBodyPose, Point, ankle_roll_angle, core_risk_score  # noqa: E402
+from .baseline_risk import LowerBodyPose, Point, core_risk_score  # noqa: E402
 from .injury_descriptions import describe_critical_risks  # noqa: E402
 from .motion_gate import MotionGate  # noqa: E402
-from .smoothing import LandmarkSmoother  # noqa: E402
 
 
 def _download_model(url: str, dest: Path) -> None:
@@ -153,55 +150,14 @@ _STATUS_ACCEPTABLE = "acceptable"
 _STATUS_CAUTION = "caution"
 _STATUS_RISKY = "risky"
 
-_CORE_RISK_CAUTION_THRESHOLD = 0.25
-_CORE_RISK_RISKY_THRESHOLD = 0.55
-# Status hysteresis: the label rises at the thresholds above but only clears
-# below these lowered bands, so a score hovering near a boundary does not
-# flicker the status frame-to-frame.
-_CORE_RISK_CAUTION_CLEAR = 0.20
-_CORE_RISK_RISKY_CLEAR = 0.40
-
-# Exponential smoothing factor (0-1) for the per-frame risk components;
-# higher = more responsive, lower = smoother.
-_SCORE_SMOOTHING_ALPHA = 0.5
-_SMOOTHED_SCORE_KEYS = (
-    "knee_stiffness_risk",
-    "ankle_foot_alignment_risk",
-    "ankle_roll_risk",
-    "hip_displacement_proxy",
-    "landing_asymmetry_score",
-    "core_risk",
-)
-
-# A severe ankle-roll event must persist this many consecutive frames before
-# it is reported, so a single noisy landmark frame cannot fire the flag.
-_ANKLE_ROLL_EVENT_MIN_CONSECUTIVE = 2
+_CORE_RISK_CAUTION_THRESHOLD = 0.35
+_CORE_RISK_RISKY_THRESHOLD = 0.60
 
 _DEFAULT_MODEL_COMPLEXITY = 0
 _DEFAULT_MIN_DETECTION_CONFIDENCE = 0.5
 _DEFAULT_MIN_TRACKING_CONFIDENCE = 0.5
 
-# Minimum landmark visibility for the offline path; frames with lower-visibility
-# lower-body landmarks are treated as no pose (they are skipped, not scored).
-# The live path already gates on visibility in ``injury_risk``.
-_LANDMARK_VISIBILITY_THRESHOLD = 0.5
-
 _MOTION_GATE_WINDOW_SECONDS = 0.3
-# Motion-gate hysteresis: once moving, standing is declared only below this
-# lower displacement ratio; the label must also disagree for this many
-# consecutive frames before flipping.
-_MOTION_GATE_EXIT_RATIO = 0.035
-_MOTION_GATE_MIN_CONSECUTIVE_FRAMES = 2
-
-# Ankle-roll evaluation window and contact gating.
-# A foot is considered planted while its ankle stays within this fraction of
-# the leg length above its rolling minimum height (dangling/swing feet are
-# skipped so they cannot false-alarm).
-_ANKLE_ROLL_PLANT_WINDOW_SECONDS = 0.5
-_ANKLE_ROLL_PLANT_RATIO = 0.25
-# Minimum number of standing frames needed before a side's neutral roll
-# baseline is locked in (median of the collected samples).
-_ANKLE_ROLL_BASELINE_MIN_FRAMES = 15
 
 _COLOR_ACCEPTABLE = (0, 255, 0)
 _COLOR_CAUTION = (0, 255, 255)
@@ -315,14 +271,6 @@ def _extract_pose(landmarks: Any, image_shape: tuple[int, ...]) -> LowerBodyPose
     if landmarks is None:
         return None
     try:
-        for idx in LOWER_BODY_INDICES.values():
-            visibility = getattr(landmarks.landmark[idx], "visibility", 1.0)
-            # Real landmarks expose a float visibility; mocks in tests do not,
-            # and are never rejected here.
-            if isinstance(visibility, (int, float)) and (
-                visibility < _LANDMARK_VISIBILITY_THRESHOLD
-            ):
-                return None
         kwargs = {
             name: _landmark_to_point(landmarks, idx, image_shape)
             for name, idx in LOWER_BODY_INDICES.items()
@@ -346,31 +294,6 @@ def _status(core_risk: float) -> str:
     if core_risk < _CORE_RISK_RISKY_THRESHOLD:
         return _STATUS_CAUTION
     return _STATUS_RISKY
-
-
-def _status_with_hysteresis(core_risk: float, current: str) -> str:
-    """Map a smoothed core risk score to a status with hysteresis.
-
-    The status rises at ``_CORE_RISK_*_THRESHOLD`` but only falls back below
-    the lower ``_CORE_RISK_*_CLEAR`` bands, preventing label flicker when the
-    score hovers near a boundary.
-
-    Args:
-        core_risk: The smoothed core risk score in ``[0.0, 1.0]``.
-        current: The status of the previous frame (one of the ``_STATUS_*``).
-
-    Returns:
-        The new status label.
-    """
-    if core_risk >= _CORE_RISK_RISKY_THRESHOLD or (
-        current == _STATUS_RISKY and core_risk >= _CORE_RISK_RISKY_CLEAR
-    ):
-        return _STATUS_RISKY
-    if core_risk >= _CORE_RISK_CAUTION_THRESHOLD or (
-        current == _STATUS_CAUTION and core_risk >= _CORE_RISK_CAUTION_CLEAR
-    ):
-        return _STATUS_CAUTION
-    return _STATUS_ACCEPTABLE
 
 
 def _status_color(status: str) -> tuple[int, int, int]:
@@ -527,9 +450,6 @@ def build_csv_rows(results: list[dict[str, Any]]) -> list[dict[str, str]]:
         "is_moving",
         "knee_stiffness_risk",
         "ankle_foot_alignment_risk",
-        "ankle_roll_risk",
-        "ankle_roll_angle_deg",
-        "ankle_roll_event",
         "hip_displacement_proxy",
         "landing_asymmetry_score",
         "core_risk",
@@ -542,8 +462,6 @@ def build_csv_rows(results: list[dict[str, Any]]) -> list[dict[str, str]]:
         "time_sec",
         "knee_stiffness_risk",
         "ankle_foot_alignment_risk",
-        "ankle_roll_risk",
-        "ankle_roll_angle_deg",
         "hip_displacement_proxy",
         "landing_asymmetry_score",
         "core_risk",
@@ -551,7 +469,6 @@ def build_csv_rows(results: list[dict[str, Any]]) -> list[dict[str, str]]:
     component_keys = {
         "knee_stiffness_risk",
         "ankle_foot_alignment_risk",
-        "ankle_roll_risk",
         "hip_displacement_proxy",
         "landing_asymmetry_score",
     }
@@ -683,25 +600,9 @@ def analyze_video(
 
     pose = pose_detector if pose_detector is not None else _create_pose_detector(fps)
 
-    gate = MotionGate(
-        window_seconds=_MOTION_GATE_WINDOW_SECONDS,
-        fps=fps,
-        exit_ratio=_MOTION_GATE_EXIT_RATIO,
-        min_consecutive_frames=_MOTION_GATE_MIN_CONSECUTIVE_FRAMES,
-    )
-    landmark_smoother = LandmarkSmoother()
+    gate = MotionGate(window_seconds=_MOTION_GATE_WINDOW_SECONDS, fps=fps)
     results: list[dict[str, Any]] | None = [] if output_csv is not None else None
     frame_idx = 0
-
-    roll_window: dict[str, deque] = {
-        side: deque(maxlen=max(1, int(round(fps * _ANKLE_ROLL_PLANT_WINDOW_SECONDS))))
-        for side in ("left", "right")
-    }
-    roll_baseline_samples: dict[str, list[float]] = {"left": [], "right": []}
-    roll_baseline: dict[str, float | None] = {"left": None, "right": None}
-    ema_scores: dict[str, float] = {}
-    current_status = _STATUS_ACCEPTABLE
-    roll_event_run = 0
 
     in_critical_segment = False
     popup_frames_remaining = 0
@@ -717,14 +618,6 @@ def analyze_video(
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_result = pose.process(rgb)
             pose_obj = _extract_pose(mp_result.pose_landmarks, frame.shape)
-            if pose_obj is None:
-                # Pose lost: reset the smoother so re-acquisition starts fresh
-                # instead of lagging behind the real position.
-                landmark_smoother.reset()
-            else:
-                # One-Euro smoothing stabilizes the slow-motion leg detection;
-                # the smoothed pose feeds both scoring and the drawn skeleton.
-                pose_obj = landmark_smoother.smooth_pose(pose_obj, 1.0 / fps)
 
             row: dict[str, Any] = {
                 "frame": frame_idx,
@@ -732,9 +625,6 @@ def analyze_video(
                 "is_moving": False,
                 "knee_stiffness_risk": 0.0,
                 "ankle_foot_alignment_risk": 0.0,
-                "ankle_roll_risk": 0.0,
-                "ankle_roll_angle_deg": None,
-                "ankle_roll_event": False,
                 "hip_displacement_proxy": 0.0,
                 "landing_asymmetry_score": 0.0,
                 "core_risk": 0.0,
@@ -754,68 +644,10 @@ def analyze_video(
                 state = gate.update(hip_center, leg_length)
                 row["is_moving"] = state == "moving"
 
-                # Per-side ankle-roll gating and neutral-baseline calibration.
-                planted: dict[str, bool] = {}
-                for side in ("left", "right"):
-                    ankle = getattr(pose_obj, f"{side}_ankle")
-                    roll_window[side].append(ankle[1])
-                    min_ankle_y = min(roll_window[side])
-                    planted[side] = (
-                        ankle[1] - min_ankle_y
-                    ) / max(leg_length, 1e-6) < _ANKLE_ROLL_PLANT_RATIO
-                    if state == "standing" and roll_baseline[side] is None:
-                        angle = ankle_roll_angle(
-                            getattr(pose_obj, f"{side}_knee"),
-                            ankle,
-                            getattr(pose_obj, f"{side}_heel"),
-                            getattr(pose_obj, f"{side}_foot_index"),
-                        )
-                        if angle is not None:
-                            roll_baseline_samples[side].append(angle)
-                            if (
-                                len(roll_baseline_samples[side])
-                                >= _ANKLE_ROLL_BASELINE_MIN_FRAMES
-                            ):
-                                roll_baseline[side] = statistics.median(
-                                    roll_baseline_samples[side]
-                                )
-
-                score = core_risk_score(
-                    pose_obj,
-                    planted=(planted["left"], planted["right"]),
-                    roll_baseline=(
-                        roll_baseline["left"],
-                        roll_baseline["right"],
-                    ),
-                )
-                row.update(score)
-                # Exponential smoothing of the score components.
-                for key in _SMOOTHED_SCORE_KEYS:
-                    value = float(score.get(key, 0.0) or 0.0)
-                    prev = ema_scores.get(key)
-                    if prev is None:
-                        ema_scores[key] = value
-                    else:
-                        ema_scores[key] = (
-                            _SCORE_SMOOTHING_ALPHA * value
-                            + (1.0 - _SCORE_SMOOTHING_ALPHA) * prev
-                        )
-                    score[key] = ema_scores[key]
-                row.update(score)
-                # Debounced severe ankle-roll event (2 consecutive frames).
-                if score.get("ankle_roll_event", False):
-                    roll_event_run += 1
-                else:
-                    roll_event_run = 0
-                roll_event = roll_event_run >= _ANKLE_ROLL_EVENT_MIN_CONSECUTIVE
-                row["ankle_roll_event"] = roll_event
                 if state == "moving":
-                    current_status = _status_with_hysteresis(
-                        score["core_risk"], current_status
-                    )
-                    if roll_event:
-                        current_status = _STATUS_RISKY
-                    row["status"] = current_status
+                    score = core_risk_score(pose_obj)
+                    row.update(score)
+                    row["status"] = _status(score["core_risk"])
                     if row["status"] == _STATUS_RISKY:
                         if not in_critical_segment:
                             in_critical_segment = True
@@ -833,26 +665,7 @@ def analyze_video(
                     else:
                         in_critical_segment = False
                 else:
-                    # Not moving: only a severe ankle-roll event is reported.
-                    if roll_event:
-                        current_status = _STATUS_RISKY
-                        row["status"] = _STATUS_RISKY
-                        if not in_critical_segment:
-                            in_critical_segment = True
-                            popup_injuries = describe_critical_risks(score)
-                            popup_frames_remaining = int(
-                                round(fps * _POPUP_DISPLAY_SECONDS)
-                            )
-                            critical_events.append(
-                                {
-                                    "frame": frame_idx,
-                                    "time_sec": row["time_sec"],
-                                    "injuries": popup_injuries,
-                                }
-                            )
-                    else:
-                        current_status = _STATUS_ACCEPTABLE
-                        in_critical_segment = False
+                    in_critical_segment = False
             else:
                 # No pose detected: reset any active critical segment.
                 in_critical_segment = False
