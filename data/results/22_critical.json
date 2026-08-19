@@ -1,0 +1,46 @@
+[
+  {
+    "frame": 4,
+    "time_sec": 0.133,
+    "injuries": [
+      {
+        "component": "ankle_foot_alignment_risk",
+        "name": "Ankle sprain (ATFL tear)",
+        "short_description": "Foot not aligned with momentum",
+        "description": "The foot is not aligned with the body's momentum, creating lateral shearing forces on the ankle ligaments.",
+        "prevention": "Land with the foot pointing along the direction of movement and keep the knee centered over the foot.",
+        "score": 0.9622138896638154
+      },
+      {
+        "component": "ankle_roll_risk",
+        "name": "Ankle roll (inversion/eversion)",
+        "short_description": "Foot rolled sideways at the ankle",
+        "description": "The foot is rolled sideways at the ankle (inversion/eversion), the classic lateral ankle-sprain mechanism. A severe roll can injure the ATFL and other lateral ankle ligaments.",
+        "prevention": "Land with the foot flat and pointed along the direction of movement; strengthen the peroneal muscles and practice stable single-leg landings.",
+        "score": 0.5047407510455723
+      }
+    ]
+  },
+  {
+    "frame": 56,
+    "time_sec": 1.867,
+    "injuries": [
+      {
+        "component": "ankle_roll_risk",
+        "name": "Ankle roll (inversion/eversion)",
+        "short_description": "Foot rolled sideways at the ankle",
+        "description": "The foot is rolled sideways at the ankle (inversion/eversion), the classic lateral ankle-sprain mechanism. A severe roll can injure the ATFL and other lateral ankle ligaments.",
+        "prevention": "Land with the foot flat and pointed along the direction of movement; strengthen the peroneal muscles and practice stable single-leg landings.",
+        "score": 0.7479533590104396
+      },
+      {
+        "component": "ankle_foot_alignment_risk",
+        "name": "Ankle sprain (ATFL tear)",
+        "short_description": "Foot not aligned with momentum",
+        "description": "The foot is not aligned with the body's momentum, creating lateral shearing forces on the ankle ligaments.",
+        "prevention": "Land with the foot pointing along the direction of movement and keep the knee centered over the foot.",
+        "score": 0.5700516979032952
+      }
+    ]
+  }
+]

@@ -104,3 +104,31 @@ def test_classify_frame_scales_threshold_with_leg_length():
     gate = MotionGate(window_seconds=0.3, fps=30.0)
     above = [(0.0, 1.0, 0.0)] * 9 + [(threshold + 0.001, 1.0, 0.0)]
     assert classify_frame(gate, above, leg_length=leg_length) == "moving"
+
+
+def test_motion_gate_hysteresis_holds_moving():
+    gate = MotionGate(
+        window_seconds=0.3, fps=30.0, exit_ratio=0.02, min_consecutive_frames=0
+    )
+    for _ in range(9):
+        gate.update((0.0, 1.0, 0.0), 1.0)
+    # Enter moving: displacement 0.06 > entry threshold 0.05.
+    assert gate.update((0.06, 1.0, 0.0), 1.0) == "moving"
+    # Drop to 0.04 (< entry 0.05 but > exit 0.02): still moving (hysteresis).
+    assert gate.update((0.04, 1.0, 0.0), 1.0) == "moving"
+    # Let the window slide fully to 0.04: displacement 0 -> below exit -> standing.
+    for _ in range(9):
+        result = gate.update((0.04, 1.0, 0.0), 1.0)
+    assert result == "standing"
+
+
+def test_motion_gate_debounce_requires_consecutive_frames():
+    gate = MotionGate(
+        window_seconds=0.3, fps=30.0, min_consecutive_frames=2
+    )
+    for _ in range(9):
+        gate.update((0.0, 1.0, 0.0), 1.0)
+    # First disagreeing frame: label held.
+    assert gate.update((0.06, 1.0, 0.0), 1.0) == "standing"
+    # Second consecutive disagreeing frame: label flips to moving.
+    assert gate.update((0.06, 1.0, 0.0), 1.0) == "moving"

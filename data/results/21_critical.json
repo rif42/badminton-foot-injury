@@ -1,0 +1,32 @@
+[
+  {
+    "frame": 34,
+    "time_sec": 1.133,
+    "injuries": [
+      {
+        "component": "ankle_foot_alignment_risk",
+        "name": "Ankle sprain (ATFL tear)",
+        "short_description": "Foot not aligned with momentum",
+        "description": "The foot is not aligned with the body's momentum, creating lateral shearing forces on the ankle ligaments.",
+        "prevention": "Land with the foot pointing along the direction of movement and keep the knee centered over the foot.",
+        "score": 0.8752500690163352
+      },
+      {
+        "component": "hip_displacement_proxy",
+        "name": "Hip instability",
+        "short_description": "Pelvis displaced from base of support",
+        "description": "The pelvis is displaced far from the base of support, transferring excessive stress to the knee and ankle.",
+        "prevention": "Keep the hips centered over the feet and strengthen hip stabilizers for better control.",
+        "score": 0.7760228375097701
+      },
+      {
+        "component": "knee_stiffness_risk",
+        "name": "Patellar tendon overload",
+        "short_description": "Knee too straight during loading",
+        "description": "The knee is too straight during landing or a lunge, increasing mechanical leverage and strain on the patellar tendon and meniscus.",
+        "prevention": "Keep the knee flexed and aligned over the toe during loading; avoid hyper-extending the knee.",
+        "score": 0.6800158849049693
+      }
+    ]
+  }
+]

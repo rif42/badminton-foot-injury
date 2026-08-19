@@ -1,0 +1,2 @@
+frame,time_sec,is_moving,knee_stiffness_risk,ankle_foot_alignment_risk,ankle_roll_risk,ankle_roll_angle_deg,ankle_roll_event,hip_displacement_proxy,landing_asymmetry_score,core_risk,status,injury_names,injury_descriptions,injury_preventions
+0,0.0,False,0.0,0.0,0.0,,False,0.0,0.0,0.0,acceptable,,,

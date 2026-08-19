@@ -19,6 +19,7 @@ from badminton_risk.injury_risk import (
     eval_piecewise_by_max,
     eval_piecewise_by_min,
     front_leg_side,
+    compute_ankle_roll,
     has_required_landmarks,
     is_idle,
     risk_level_from_normalized,
@@ -35,12 +36,14 @@ class TestDataStructures:
             "knee_flexion",
             "foot_alignment",
             "landing_pitch",
+            "ankle_roll",
         }
         assert profile.weights == {
             "hip_trajectory_deviation": 0.15,
-            "knee_flexion": 0.35,
-            "foot_alignment": 0.25,
+            "knee_flexion": 0.30,
+            "foot_alignment": 0.20,
             "landing_pitch": 0.25,
+            "ankle_roll": 0.10,
         }
         assert set(profile.interactions) == {
             "knee_x_hip",
@@ -48,7 +51,7 @@ class TestDataStructures:
             "knee_x_pitch",
             "hip_x_foot",
         }
-        assert profile.bands == {"green_max": 29, "yellow_max": 59}
+        assert profile.bands == {"green_max": 25, "yellow_max": 45}
 
     def test_all_presets_exist(self):
         assert set(PROFILE_PRESETS) == {"conservative", "balanced", "aggressive"}
@@ -101,13 +104,14 @@ class TestCurveEvaluation:
             "knee_flexion": 0.9,
             "foot_alignment": 0.3,
             "landing_pitch": 0.2,
+            "ankle_roll": 0.0,
         }
         base = compute_base_score(normalized, profile.weights)
         interaction = compute_interaction_score(normalized, profile.interactions)
         total = compute_total_risk(base, interaction)
 
         expected_base = 100.0 * (
-            0.15 * 0.1 + 0.35 * 0.9 + 0.25 * 0.3 + 0.25 * 0.2
+            0.15 * 0.1 + 0.30 * 0.9 + 0.20 * 0.3 + 0.25 * 0.2 + 0.10 * 0.0
         )
         expected_interaction = (
             12 * 0.9 * 0.1
@@ -174,6 +178,43 @@ class TestParameterExtraction:
         }
         pitch = compute_landing_pitch(landmarks, "left", frame_shape)
         assert pitch < 0
+
+    def test_compute_ankle_roll_neutral_is_zero(self):
+        # Ankle above the heel-foot line, shank vertical -> neutral roll.
+        landmarks = {
+            "right_knee": _landmark(0.5, 0.5, 0.0),
+            "right_ankle": _landmark(0.5, 0.8, 0.0),
+            "right_heel": _landmark(0.5, 0.82, -0.05),
+            "right_foot_index": _landmark(0.5, 0.82, 0.05),
+        }
+        angle = compute_ankle_roll(landmarks, "right")
+        assert angle is not None
+        assert abs(angle) == pytest.approx(0.0, abs=1e-3)
+
+    def test_compute_ankle_roll_rolled_foot_is_nonzero(self):
+        # The whole foot shifted laterally tilts the foot plane out of the
+        # shank's vertical plane -> a measurable roll.
+        landmarks = {
+            "right_knee": _landmark(0.5, 0.5, 0.0),
+            "right_ankle": _landmark(0.5, 0.8, 0.0),
+            "right_heel": _landmark(0.56, 0.82, 0.0),
+            "right_foot_index": _landmark(0.56, 0.81, 0.1),
+        }
+        angle = compute_ankle_roll(landmarks, "right")
+        assert angle is not None
+        assert abs(angle) > 10.0
+
+    def test_compute_ankle_roll_degenerate_returns_none(self):
+        landmarks = {
+            "right_knee": _landmark(0.5, 0.5),
+            "right_ankle": _landmark(0.5, 0.8),
+            "right_heel": _landmark(0.5, 0.82, 0.0),
+            "right_foot_index": _landmark(0.5, 0.82, 0.0),
+        }
+        assert compute_ankle_roll(landmarks, "right") is None
+
+    def test_compute_ankle_roll_missing_side_returns_none(self):
+        assert compute_ankle_roll({"right_knee": _landmark(0.5, 0.5)}, "left") is None
 
 
 def _make_safe_landmarks(hip_shift=(0.0, 0.0)):
@@ -341,4 +382,44 @@ class TestRiskModel:
         assert idle_result is not None
         assert idle_result.status == "Idle"
         assert idle_result.total_risk == pytest.approx(0.0)
+
+    def test_risk_model_includes_ankle_roll_param_and_alert(self):
+        model = RiskModel()
+        frame_shape = (480, 640)
+        result = None
+        for i in range(5):
+            result = model.update(
+                _make_safe_landmarks(hip_shift=(i * 0.02, 0)), frame_shape
+            )
+        assert result is not None
+        assert "ankle_roll" in result.normalized
+        labels = [a["label"] for a in result.alerts]
+        assert "Ankle Roll" in labels
+
+    def test_risk_model_rolled_foot_raises_ankle_roll_alert(self):
+        model = RiskModel()
+        frame_shape = (480, 640)
+        result = None
+        for i in range(5):
+            lm = _make_safe_landmarks(hip_shift=(i * 0.02, 0))
+            # Roll the front (right) foot sideways: shift the whole foot
+            # laterally so the foot plane tilts out of the shank plane.
+            lm["right_heel"] = _landmark(0.56, 0.82, 0.0)
+            lm["right_foot_index"] = _landmark(0.56, 0.81, 0.1)
+            result = model.update(lm, frame_shape)
+        assert result is not None
+        roll_alert = next(a for a in result.alerts if a["label"] == "Ankle Roll")
+        assert roll_alert["cls"] != "ok"
+        assert "°" in roll_alert["txt"]
+
+    def test_risk_model_idle_alerts_all_low_with_ankle_roll(self):
+        model = RiskModel()
+        frame_shape = (480, 640)
+        result = None
+        for _ in range(5):
+            result = model.update(_make_safe_landmarks(), frame_shape)
+        assert result is not None
+        assert result.status == "Idle"
+        assert len(result.alerts) == 5
+        assert all(alert["txt"] == "Low" for alert in result.alerts)
 
